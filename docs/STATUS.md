@@ -2,7 +2,7 @@
 
 Updated at the end of each session.
 
-## 2026-07-29 — Phase 0 complete
+## 2026-07-29 — Phase 0 complete, after two rounds of adversarial review
 
 The library is built, verified and committed. Nothing is published yet.
 
@@ -28,7 +28,8 @@ Examples: four TypeScript examples plus a smoke test against the built package.
 
 ### Verification
 
-- `pnpm test` — **151 tests across 10 files**, all passing
+- `pnpm test` — **172 tests across 12 files**, all passing
+- `pnpm test:coverage` — **100%** of statements, branches, functions and lines
 - `pnpm typecheck`, `pnpm lint` — clean
 - `pnpm build` — clean; `dist/` has ESM, CJS, `.d.ts` and `.d.cts`
 - `pnpm examples` and `pnpm examples:smoke` — every example runs, and the built package works
@@ -39,21 +40,22 @@ against 0.8086. Hull, chapter 17: delta 0.5216016339715761, gamma 0.065545377252
 vega 12.105242754243843, theta -4.305389964546104. Every deviation is consistent with the book's
 own rounding.
 
-Reference values for the normal distribution are generated in exact BigInt arithmetic rather than
-transcribed, and the generator cross-checks each value at two working precisions before emitting
-it.
+Externally anchored, so that no module rests on self-consistency alone: the normal distribution
+against 40-digit BigInt arithmetic; prices and Greeks against Hull; the European tree against a
+closed-form binomial sum; American exercise against Merton's perpetual put; implied volatility
+against an exact closed-form inverse at the forward and against a bisection-only solver. The three
+new derivations were independently re-derived and checked to 60 digits during review.
 
-### What the adversarial review found
+### What two rounds of adversarial review found
 
-`quant-verifier` was run against `/src` after the suite was already green at 146 assertions. It
-found **five real defects**, all now fixed with regression tests: a binomial tree returning
-`Infinity` for inputs inside the documented domain, an expiring at-the-money put reported as
-certain to finish in the money, a tail probability computed as a complement and collapsing to 0, a
-normal-CDF cutoff discarding nineteen orders of magnitude of representable tail, and a `-0`
-escaping from `historicalVar`.
+Round one, against a suite already green at 146 assertions: **five defects**. Round two, run
+against those fixes because they had never themselves been reviewed: **four more**, two of them
+created by the round-one fixes. Writing the regression tests surfaced a fifth. All ten are fixed
+and each carries a regression test.
 
-Four of the five sat at a boundary the tests exercised only from one side. The full write-up is in
-`docs/DECISIONS.md`.
+The pattern is the point. A fix carries the same blind spot as the code it repairs. Coverage stood
+at 98.65% when the first five were found and every one of them was in a covered line — it measures
+execution, not correctness. The full write-up is in `docs/DECISIONS.md`.
 
 ### Deliberately not done
 

@@ -30,7 +30,9 @@ import { normalCdf, normalPdf } from '../utils/normal.js';
 import type { Greeks, OptionInputs, OptionType } from '../utils/types.js';
 import {
   InvalidInputError,
+  hasNoDispersion,
   resolveOptionInputs,
+  withoutNegativeZero,
   type ResolvedOptionInputs,
 } from '../utils/validate.js';
 
@@ -63,44 +65,52 @@ function boundaryGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): G
   // 1 in the money, 0 out of it, 0.5 exactly at the kink.
   const indicator = signedEdge === 0 ? 0.5 : signedEdge > 0 ? 1 : 0;
 
+  // Vega is NOT zero at the kink, and this is where the Dirac argument for gamma does not carry
+  // over. Gamma genuinely diverges there. Vega does not: approaching from sigma > 0 at the
+  // forward-at-the-money point, d1 = sigma sqrt(T) / 2 tends to 0, so
+  //
+  //   vega -> S e^(-qT) sqrt(T) phi(0)
+  //
+  // which is finite and large — 39.894 for S = K = 100, r = q = 0, T = 1. Reporting 0 there put
+  // a jump discontinuity into the library's own output: the analytic branch returns 39.894 at
+  // sigma = 5e-324 and the boundary branch returned 0 at sigma = 0.
+  //
+  // Away from the kink vega really is 0: the value approaches intrinsic exponentially fast in
+  // 1/sigma^2. And with no time left it is 0 either way, which sqrt(0) delivers on its own.
+  const vega = indicator === 0.5 ? spotTerm * Math.sqrt(timeToExpiry) * normalPdf(0) : 0;
+
   return {
     delta: sign * indicator * Math.exp(-dividendYield * timeToExpiry),
     gamma: 0,
-    vega: 0,
+    vega,
     theta: sign * indicator * (dividendYield * spotTerm - riskFreeRate * strikeTerm),
     rho: sign * indicator * timeToExpiry * strikeTerm,
   };
 }
 
 /**
- * Replaces any `-0` with `0`.
+ * Strips `-0` from every field, on every path.
  *
  * A put reaches `-0` in two separate ways: out of the money at the boundary, where the sign
  * multiplies a zero indicator, and deep out of the money in the analytic branch, where
- * `normalCdf(-d1)` underflows and the leading minus sign survives. `-0` compares unequal to `0`
- * under `Object.is`, so it propagates into any aggregation across a position and shows up as a
- * spurious difference that no arithmetic explains.
- *
- * Applied once, to every field, on every path. The first fix for this covered only the boundary
- * branch and left the analytic one — which is precisely why it is now a single choke point
- * rather than a guard at each site where the hazard was noticed.
+ * `normalCdf(-d1)` underflows and the leading minus sign survives. The first fix covered only
+ * the boundary branch — which is why this is now one choke point rather than a guard at each
+ * site where the hazard happened to be noticed. See {@link withoutNegativeZero}.
  */
-function withoutNegativeZero(greeks: Greeks): Greeks {
+function computeGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): Greeks {
+  const greeks = rawGreeks(inputs, optionType);
+
   return {
-    delta: greeks.delta === 0 ? 0 : greeks.delta,
-    gamma: greeks.gamma === 0 ? 0 : greeks.gamma,
-    vega: greeks.vega === 0 ? 0 : greeks.vega,
-    theta: greeks.theta === 0 ? 0 : greeks.theta,
-    rho: greeks.rho === 0 ? 0 : greeks.rho,
+    delta: withoutNegativeZero(greeks.delta),
+    gamma: withoutNegativeZero(greeks.gamma),
+    vega: withoutNegativeZero(greeks.vega),
+    theta: withoutNegativeZero(greeks.theta),
+    rho: withoutNegativeZero(greeks.rho),
   };
 }
 
-function computeGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): Greeks {
-  return withoutNegativeZero(rawGreeks(inputs, optionType));
-}
-
 function rawGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): Greeks {
-  if (inputs.timeToExpiry === 0 || inputs.volatility === 0) {
+  if (hasNoDispersion(inputs)) {
     return boundaryGreeks(inputs, optionType);
   }
 

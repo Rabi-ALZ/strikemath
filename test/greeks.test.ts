@@ -10,6 +10,7 @@ import {
   vega,
 } from '../src/greeks/analytical.js';
 import { bsCall, bsPut } from '../src/pricing/blackScholes.js';
+import { normalPdf } from '../src/utils/normal.js';
 import { InvalidInputError } from '../src/utils/validate.js';
 import type { OptionInputs } from '../src/utils/types.js';
 
@@ -183,13 +184,61 @@ describe('boundary cases', () => {
     expect(putGreeks({ ...atExpiry, spot: 100 }).delta).toBe(-0.5);
   });
 
-  it('reports zero gamma and vega at the boundary', () => {
+  it('reports zero gamma and vega at the boundary, away from the kink', () => {
     for (const inputs of [
       { ...base, timeToExpiry: 0 },
       { ...base, volatility: 0 },
     ]) {
       expect(callGreeks(inputs).gamma).toBe(0);
       expect(callGreeks(inputs).vega).toBe(0);
+    }
+  });
+
+  it('reports the finite one-sided vega at the kink, where gamma diverges but vega does not', () => {
+    // Regression. Gamma's limit at the kink is a Dirac delta and is reported as 0. Vega is a
+    // different matter and the same reasoning does not carry over: approaching from sigma > 0 at
+    // the forward-at-the-money point, d1 = sigma sqrt(T) / 2 tends to 0, so vega tends to
+    // S e^(-qT) sqrt(T) phi(0) — finite and large. Reporting 0 put a jump discontinuity into the
+    // library's own output.
+    for (const [spot, riskFreeRate, timeToExpiry] of [
+      [100, 0, 1],
+      [100, 0.05, 1],
+      [100, 0.05, 4],
+      [50, -0.02, 0.25],
+    ] as const) {
+      // r = q puts the forward exactly on the strike, which is where the kink is.
+      const atKink = {
+        spot,
+        strike: spot,
+        timeToExpiry,
+        riskFreeRate,
+        dividendYield: riskFreeRate,
+        volatility: 0,
+      };
+
+      const expected =
+        spot * Math.exp(-riskFreeRate * timeToExpiry) * Math.sqrt(timeToExpiry) * normalPdf(0);
+
+      expect(
+        callGreeks(atKink).vega,
+        `spot ${spot}, r ${riskFreeRate}, T ${timeToExpiry}`,
+      ).toBeCloseTo(expected, 10);
+      expect(putGreeks(atKink).vega).toBeCloseTo(expected, 10);
+
+      // And it is continuous: the analytic branch at the smallest representable volatility must
+      // agree with the boundary branch at exactly zero.
+      const justAbove = callGreeks({ ...atKink, volatility: Number.MIN_VALUE });
+      expect(justAbove.vega).toBeCloseTo(callGreeks(atKink).vega, 10);
+    }
+  });
+
+  it('still reports zero vega at the boundary when the forward is not on the strike', () => {
+    // Away from the kink the value approaches intrinsic exponentially fast in 1/sigma^2, so 0 is
+    // the right answer and the fix above must not have widened.
+    for (const strike of [80, 130]) {
+      const offKink = { ...base, strike, volatility: 0 };
+      expect(callGreeks(offKink).vega).toBe(0);
+      expect(putGreeks(offKink).vega).toBe(0);
     }
   });
 

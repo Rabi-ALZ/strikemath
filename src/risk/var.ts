@@ -15,7 +15,7 @@
  */
 
 import { inverseNormalCdf } from '../utils/normal.js';
-import { InvalidInputError, assertFinite } from '../utils/validate.js';
+import { InvalidInputError, assertFinite, withoutNegativeZero } from '../utils/validate.js';
 
 /** Inputs to {@link historicalVar}. */
 export interface HistoricalVarInputs {
@@ -57,9 +57,7 @@ export function toLosses(returns: readonly number[]): number[] {
 
   return returns.map((value, index) => {
     assertFinite(`returns[${index}]`, value);
-    // `-0` for a flat period: it compares unequal to 0 under Object.is and would surface in any
-    // aggregation across positions. Same hazard as the one guarded in boundaryGreeks.
-    return value === 0 ? 0 : -value;
+    return withoutNegativeZero(-value);
   });
 }
 
@@ -88,7 +86,7 @@ export function historicalVar(inputs: HistoricalVarInputs): number {
   const confidenceLevel = assertConfidenceLevel(inputs.confidenceLevel);
   const losses = toLosses(inputs.returns).sort((a, b) => a - b);
 
-  return quantile(losses, confidenceLevel);
+  return withoutNegativeZero(quantile(losses, confidenceLevel));
 }
 
 /**
@@ -117,7 +115,11 @@ export function parametricVar(inputs: ParametricVarInputs): number {
     );
   }
 
-  return -inputs.mean + inputs.standardDeviation * inverseNormalCdf(confidenceLevel);
+  // At `mean = 0`, `standardDeviation = 0` and a confidence below 0.5 the quantile is negative,
+  // so both terms are `-0` and the sum stays `-0`.
+  return withoutNegativeZero(
+    -inputs.mean + inputs.standardDeviation * inverseNormalCdf(confidenceLevel),
+  );
 }
 
 /**

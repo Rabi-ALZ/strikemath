@@ -61,6 +61,29 @@ describe('bsCall and bsPut with zero volatility', () => {
     expect(bsPut({ ...base, volatility: 0, spot: 200 })).toBe(0);
   });
 
+  it('treat a volatility that underflows the deviation as the boundary case', () => {
+    // Regression. The degenerate test used to be `volatility === 0 || timeToExpiry === 0`, which
+    // misses the case where both are positive and `sigma sqrt(T)` underflows to 0 anyway: at
+    // `volatility = 5e-324` with `timeToExpiry = 0.25` the deviation rounds to 0 and `d1` becomes
+    // `0 / 0 = NaN`, which propagated into every price and Greek. Underflow is not a separate
+    // case from zero; it is the same case reached by arithmetic instead of by input.
+    const denormal = {
+      spot: 100,
+      strike: 90,
+      timeToExpiry: 0.25,
+      riskFreeRate: 0.05,
+      volatility: Number.MIN_VALUE,
+      dividendYield: 0.01,
+    };
+
+    expect(denormal.volatility * Math.sqrt(denormal.timeToExpiry)).toBe(0);
+
+    const expected = 100 * Math.exp(-0.01 * 0.25) - 90 * Math.exp(-0.05 * 0.25);
+    expect(bsCall(denormal)).toBeCloseTo(expected, 12);
+    expect(bsPut(denormal)).toBe(0);
+    expect(() => d1d2(denormal)).toThrow(InvalidInputError);
+  });
+
   it('agree with the limit of a vanishing volatility', () => {
     const zero = bsCall({ ...base, volatility: 0, spot: 120 });
     const tiny = bsCall({ ...base, volatility: 1e-8, spot: 120 });

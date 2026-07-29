@@ -13,7 +13,7 @@
  */
 
 import { normalPdf, inverseNormalCdf } from '../utils/normal.js';
-import { InvalidInputError, assertFinite } from '../utils/validate.js';
+import { InvalidInputError, assertFinite, withoutNegativeZero } from '../utils/validate.js';
 import { assertConfidenceLevel, quantile, toLosses } from './var.js';
 import type { HistoricalVarInputs, ParametricVarInputs } from './var.js';
 
@@ -42,7 +42,7 @@ export function historicalCvar(inputs: HistoricalCvarInputs): number {
   const tailCount = Math.max(1, Math.ceil((1 - confidenceLevel) * losses.length));
   const tail = losses.slice(losses.length - tailCount);
 
-  return tail.reduce((total, loss) => total + loss, 0) / tail.length;
+  return withoutNegativeZero(tail.reduce((total, loss) => total + loss, 0) / tail.length);
 }
 
 /**
@@ -70,7 +70,9 @@ export function parametricCvar(inputs: ParametricCvarInputs): number {
   }
 
   const z = inverseNormalCdf(confidenceLevel);
-  return -inputs.mean + (inputs.standardDeviation * normalPdf(z)) / (1 - confidenceLevel);
+  return withoutNegativeZero(
+    -inputs.mean + (inputs.standardDeviation * normalPdf(z)) / (1 - confidenceLevel),
+  );
 }
 
 /**

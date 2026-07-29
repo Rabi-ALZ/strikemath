@@ -246,3 +246,74 @@ behaviour in floating point.
 
 A green suite says the cases you thought of pass. It says nothing about the cases you did not, and
 the boundaries are where those live.
+
+---
+
+## 2026-07-29 — Vega at the kink is finite; this supersedes the earlier "gamma and vega are 0"
+
+The entry above on boundary Greeks said gamma and vega are both 0 at the boundary, justifying it
+with the Dirac-delta argument. That argument is correct for gamma and **wrong for vega**, and the
+entry is superseded on that point.
+
+At the kink — `volatility = 0`, `timeToExpiry > 0` and the forward exactly on the strike —
+approaching from `sigma > 0` gives `d1 = sigma sqrt(T) / 2 -> 0`, so
+
+```
+vega -> S e^(-qT) sqrt(T) phi(0)
+```
+
+which is finite and large: **39.894** for `S = K = 100`, `r = q = 0`, `T = 1`. Reporting 0 put a
+jump discontinuity into the library's own output — the analytic branch returns 39.894 at
+`sigma = 5e-324` and the boundary branch returned 0 at `sigma = 0`. Gamma is different: it
+genuinely diverges, and the code returns 3.99e297 just above the boundary, so 0 remains the only
+finite thing to report.
+
+Away from the kink vega really is 0, because the value approaches intrinsic exponentially fast in
+`1/sigma^2`. Only the exact kink was wrong, and the existing boundary test used `r = 0.05, q = 0`,
+which is not at the kink — so the case was never covered.
+
+---
+
+## 2026-07-29 — The degenerate test is on `sigma sqrt(T)`, not on `sigma` and `T` separately
+
+`volatility === 0 || timeToExpiry === 0` misses the case where both are strictly positive and
+their product underflows. At `volatility = 5e-324` with `timeToExpiry = 0.25` the deviation rounds
+to 0, `d1` becomes `0 / 0 = NaN`, and that propagated into every price and Greek — a `NaN` from a
+library whose stated contract is that it never returns one.
+
+Every degenerate branch now routes through one shared predicate, `hasNoDispersion`. Underflow is
+not a separate case from zero; it is the same case reached by arithmetic rather than by input.
+
+---
+
+## 2026-07-29 — Round two, and what a second review pass was worth
+
+The five defects from round one were fixed and committed without the review being run again. That
+gap was raised in critique, the review was re-run against the fixes, and it found **four more** —
+two of them created or left standing by the round-one fixes themselves:
+
+1. **Vega at the kink**, above. A defect in the original code that round one did not look for.
+2. **The binomial representability guard refused puts.** The guard was added by the round-one fix
+   for the `Infinity` defect. Its reasoning is call-specific — a call payoff at an overflowed node
+   is `Infinity`, a put's is `max(K - Infinity, 0) = 0`, which is correct — but it was applied to
+   both. It therefore rejected put trees that computed correctly, for inputs inside the documented
+   domain, and did so exactly when the caller raised `steps` for accuracy. A fix that reproduced
+   the failure mode it was written to remove.
+3. **`maxRepresentableSteps` named a step count that also fails.** `Math.max(1, ...)` turned a
+   limit of 0 into 1, contradicting the helper's own documented contract. Also introduced by the
+   round-one fix.
+4. **`parametricVar` returned `-0`.** Round one hardened `toLosses` and stopped there. Worse, the
+   sweep added in round two to prove the class was closed used only confidence levels at or above
+   0.5, where the quantile is non-negative — so a file whose stated claim is that the rule is
+   checked _everywhere_ missed it.
+
+Writing the regression tests then surfaced a fifth, the `sigma sqrt(T)` underflow above.
+
+**What this says.** A fix carries the same blind spot as the code it repairs, because it comes
+from the same model. Two of the four new defects existed only because of the previous round's
+fixes. The rule that follows is in CLAUDE.md: run the verifier _after_ fixing, not only before.
+
+It also says something about coverage. The suite stood at 98.65% statements and 97.4% branches
+when the first five defects were found, and every one of them was in a covered line. Coverage
+measures execution, not correctness. It earned its keep exactly once, on `maxRepresentableSteps`,
+where an uncovered branch was a real defect in new code — worth running, worth not trusting.

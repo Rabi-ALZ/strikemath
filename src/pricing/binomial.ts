@@ -66,8 +66,10 @@ function maxRepresentableSteps(inputs: ResolvedOptionInputs): number {
   const headroom = MAX_REPRESENTABLE_LOG_PRICE - Math.log(inputs.spot);
   if (headroom <= 0) return 0;
 
+  // Not clamped up to 1: a limit of 0 means no tree fits at all, and rounding that up would
+  // name a step count that fails exactly like the one the caller just tried.
   const limit = Math.floor(headroom ** 2 / (inputs.volatility ** 2 * inputs.timeToExpiry));
-  return Math.max(1, Math.min(limit, MAX_BINOMIAL_STEPS));
+  return Math.min(limit, MAX_BINOMIAL_STEPS);
 }
 
 /** {@link OptionInputs} plus the contract side, exercise style and tree resolution. */
@@ -189,13 +191,17 @@ function priceTree(
   }
 
   // The highest terminal node sits at S u^n = exp(ln S + sigma sqrt(T n)). Past the top of the
-  // double range it becomes Infinity, a call payoff there becomes Infinity, and backward
-  // induction carries it all the way to the root — so the function would return Infinity for
-  // inputs well inside the documented domain, and would do so precisely when the caller raised
-  // `steps` to get a better answer. Refusing is the only honest option: the tree cannot be
-  // represented, and no number it produced could be trusted.
+  // double range it becomes Infinity, and for a CALL the payoff there is Infinity - K = Infinity,
+  // which backward induction carries all the way to the root. Refusing is the only honest option:
+  // the tree cannot be represented, and no number it produced could be trusted.
+  //
+  // A PUT is unaffected, and the guard deliberately does not apply to one. Its terminal payoff is
+  // max(K - Infinity, 0), which evaluates to 0 — the mathematically correct value at a node that
+  // far above the strike. No Infinity ever enters the value array, so nothing propagates. Refusing
+  // a put here would reject a tree that computes correctly, and would do it precisely when the
+  // caller raised `steps` to get a better answer.
   const largestLogPrice = Math.log(spot) + volatility * Math.sqrt(timeToExpiry * steps);
-  if (largestLogPrice > MAX_REPRESENTABLE_LOG_PRICE) {
+  if (optionType === 'call' && largestLogPrice > MAX_REPRESENTABLE_LOG_PRICE) {
     const usable = maxRepresentableSteps(inputs);
     const advice =
       usable === 0

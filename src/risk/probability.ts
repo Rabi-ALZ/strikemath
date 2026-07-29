@@ -29,6 +29,7 @@ import {
   InvalidInputError,
   assertNonNegative,
   assertPositive,
+  hasNoDispersion,
   resolveOptionInputs,
   type ResolvedOptionInputs,
 } from '../utils/validate.js';
@@ -115,7 +116,7 @@ export function probabilityBelowUnderQ(inputs: LevelInputs): number {
 
 /** True when there is no randomness left and the terminal price is a single point. */
 function isDegenerate(inputs: ResolvedOptionInputs): boolean {
-  return inputs.timeToExpiry === 0 || inputs.volatility === 0;
+  return hasNoDispersion(inputs);
 }
 
 /** The deterministic terminal price, used only when {@link isDegenerate} holds. */

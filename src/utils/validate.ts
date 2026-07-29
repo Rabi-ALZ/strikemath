@@ -24,6 +24,40 @@ export interface ResolvedOptionInputs {
   readonly dividendYield: number;
 }
 
+/**
+ * Replaces `-0` with `0`.
+ *
+ * `-0` compares unequal to `0` under `Object.is` and under `Map` and `Set` key identity, so it
+ * survives into any aggregation across a position and shows up as a difference no arithmetic
+ * explains. It appears wherever a leading minus sign meets a term that has underflowed to zero,
+ * which in this library happens in the Greeks, in loss series and in parametric risk measures.
+ *
+ * This lives here, shared, rather than as a guard at each site where the hazard was noticed. It
+ * was noticed three times — in `boundaryGreeks`, then in `historicalVar`, then in the analytic
+ * Greeks branch and `parametricVar` — and each local fix left the others standing. One function,
+ * applied at every numeric exit, is the only version of this that stays fixed.
+ */
+export function withoutNegativeZero(value: number): number {
+  return value === 0 ? 0 : value;
+}
+
+/**
+ * True when the contract has no dispersion left, so every closed form degenerates.
+ *
+ * The test is on `sigma sqrt(T)` — the standard deviation of the log price over the life of the
+ * contract — and not on `volatility === 0 || timeToExpiry === 0` separately. Those two cover most
+ * of it but miss the case where both are positive and their product underflows: at
+ * `volatility = 5e-324` with `timeToExpiry = 0.25` the deviation rounds to 0, and `d1` becomes
+ * `0 / 0 = NaN`, which then propagates into every price and Greek. Underflow is not a separate
+ * case from zero; it is the same case reached by arithmetic rather than by input.
+ */
+export function hasNoDispersion(inputs: {
+  readonly volatility: number;
+  readonly timeToExpiry: number;
+}): boolean {
+  return inputs.volatility * Math.sqrt(inputs.timeToExpiry) === 0;
+}
+
 /** Asserts that a value is a finite number, naming it in the error. */
 export function assertFinite(name: string, value: number): void {
   if (typeof value !== 'number' || !Number.isFinite(value)) {

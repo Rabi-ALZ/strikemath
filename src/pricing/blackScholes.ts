@@ -17,6 +17,7 @@ import { normalCdf } from '../utils/normal.js';
 import type { OptionInputs, OptionType } from '../utils/types.js';
 import {
   InvalidInputError,
+  hasNoDispersion,
   resolveOptionInputs,
   type ResolvedOptionInputs,
 } from '../utils/validate.js';
@@ -38,10 +39,11 @@ export interface BlackScholesPriceInputs extends OptionInputs {
 function computeD1D2(inputs: ResolvedOptionInputs): BlackScholesD1D2 {
   const { spot, strike, timeToExpiry, riskFreeRate, volatility, dividendYield } = inputs;
 
-  if (timeToExpiry === 0 || volatility === 0) {
+  if (hasNoDispersion(inputs)) {
     throw new InvalidInputError(
-      'd1 and d2 are undefined when timeToExpiry or volatility is 0; the pricing functions ' +
-        'handle those cases explicitly as intrinsic and discounted forward intrinsic value',
+      'd1 and d2 are undefined when sigma sqrt(T) is 0 — timeToExpiry is 0, volatility is 0, or ' +
+        'their product has underflowed. The pricing functions handle those cases explicitly, as ' +
+        'intrinsic and discounted forward intrinsic value.',
     );
   }
 
@@ -83,7 +85,7 @@ function callPrice(inputs: ResolvedOptionInputs): number {
   const spotTerm = discountedSpot(inputs);
   const strikeTerm = discountedStrike(inputs);
 
-  if (inputs.volatility === 0) {
+  if (hasNoDispersion(inputs)) {
     return Math.max(spotTerm - strikeTerm, 0);
   }
 
@@ -99,7 +101,7 @@ function putPrice(inputs: ResolvedOptionInputs): number {
   const spotTerm = discountedSpot(inputs);
   const strikeTerm = discountedStrike(inputs);
 
-  if (inputs.volatility === 0) {
+  if (hasNoDispersion(inputs)) {
     return Math.max(strikeTerm - spotTerm, 0);
   }
 

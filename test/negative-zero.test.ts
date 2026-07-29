@@ -91,6 +91,16 @@ const contracts: ReadonlyArray<OptionInputs> = [
   { spot: 120, strike: 100, timeToExpiry: 0, riskFreeRate: 0.05, volatility: 0.2 },
   { spot: 100, strike: 100, timeToExpiry: 1, riskFreeRate: 0.05, volatility: 0 },
   { spot: 100, strike: 100, timeToExpiry: 1, riskFreeRate: 0, volatility: 0, dividendYield: 0 },
+  // A volatility that is positive but whose deviation underflows: the same boundary reached by
+  // arithmetic rather than by input.
+  {
+    spot: 100,
+    strike: 90,
+    timeToExpiry: 0.25,
+    riskFreeRate: 0.05,
+    volatility: Number.MIN_VALUE,
+    dividendYield: 0.01,
+  },
 ];
 
 describe('no public function returns -0', () => {
@@ -247,9 +257,13 @@ describe('no public function returns -0', () => {
       }
     }
 
+    // The sweep previously used only confidence levels at or above 0.5, where the normal
+    // quantile is non-negative and the second term of parametricVar is +0. Below 0.5 the
+    // quantile is negative, both terms are -0, and the sum stayed -0 — a gap in a file whose
+    // own claim is that the rule is checked EVERYWHERE.
     for (const mean of [0, -0, 0.001, -0.001]) {
       for (const standardDeviation of [0, 0.02]) {
-        for (const confidenceLevel of [0.5, 0.95]) {
+        for (const confidenceLevel of [0.05, 0.25, 0.4, 0.5, 0.95, 0.999]) {
           const args = { mean, standardDeviation, confidenceLevel };
           outcomes.push(...outcomesOf('parametricVar', () => parametricVar(args)));
           outcomes.push(...outcomesOf('parametricCvar', () => parametricCvar(args)));

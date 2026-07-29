@@ -166,6 +166,11 @@ returns NaN. Both cases are therefore handled before that point:
 With `sigma = 0` the forward is deterministic at `F = S e^((r-q)T)`, and the price is
 `e^(-rT) max(F - K, 0)`, which is the expression above.
 
+The test for this is on `sigma sqrt(T)`, not on `sigma` and `T` separately. Both can be strictly
+positive while their product underflows — `sigma = 5e-324` with `T = 0.25` — and `d1` is then
+`0 / 0 = NaN`. Underflow is not a separate case from zero; it is the same case reached by
+arithmetic rather than by input.
+
 `d1d2()` throws in both cases rather than returning `Infinity` or `NaN`, so a degenerate input
 surfaces as an error at the call site instead of travelling silently into a risk figure.
 
@@ -428,9 +433,13 @@ bisecting on the largest step count the implementation accepts:
 | 100    | 1   | 5       | 19 846                          |
 | 10 000 | 10  | 5       | 1 958                           |
 
-`crrPrice` checks this before doing any work and throws `InvalidInputError` naming the largest
-step count that fits. It does not silently reduce `steps`, because that would answer a different
-question than the one asked.
+**The constraint applies to calls only.** A call payoff at an overflowed node is
+`Infinity - K = Infinity`, which backward induction carries to the root. A put payoff there is
+`max(K - Infinity, 0) = 0`, which is the correct value at a node that far above the strike, so no
+`Infinity` ever enters the tree and the put prices correctly at any step count. `crrPrice` checks
+this before doing any work, and only for a call — refusing a put would reject a computation that
+is right. It throws `InvalidInputError` naming the largest step count that fits, and does not
+silently reduce `steps`, because that would answer a different question than the one asked.
 
 Two properties of this limit are worth stating plainly. It is reached by **raising** `steps` —
 the same contract prices correctly at a coarser tree — and it applies only to the tree: `bsPrice`

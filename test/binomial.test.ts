@@ -273,6 +273,42 @@ describe('validation', () => {
     expect(() => crrPrice({ ...extreme, spot: 1e308, strike: 1e308, steps: 100 })).toThrow(
       /No step count works/,
     );
+
+    // Regression. The same must hold when the headroom is positive but too small for even a
+    // single step: rounding the limit up to 1 named a step count that failed identically.
+    expect(() =>
+      crrPrice({ ...extreme, spot: 1e300, strike: 1e300, volatility: 20, steps: 5 }),
+    ).toThrow(/No step count works/);
+  });
+
+  it('does not refuse a put, whose payoff is finite even when the node overflows', () => {
+    // Regression. The guard's reasoning is call-specific: a call payoff at an overflowed node is
+    // Infinity - K = Infinity and propagates to the root. A put's is max(K - Infinity, 0) = 0,
+    // which is the correct value there, so no Infinity ever enters the tree. Refusing the put
+    // rejected a computation that was right, and did it exactly when the caller raised `steps`.
+    const contract = {
+      spot: 100,
+      strike: 100,
+      timeToExpiry: 10,
+      riskFreeRate: 0.02,
+      volatility: 5,
+      steps: 3000,
+    };
+
+    const european = crrPrice({ ...contract, optionType: 'put', exerciseStyle: 'european' });
+    const american = crrPrice({ ...contract, optionType: 'put', exerciseStyle: 'american' });
+
+    expect(Number.isFinite(european)).toBe(true);
+    expect(Number.isFinite(american)).toBe(true);
+
+    // And it is not merely finite — it is the right number.
+    expect(european).toBeCloseTo(bsPut(contract), 6);
+    expect(american).toBeGreaterThanOrEqual(european);
+
+    // The call on the same contract is still refused, because for a call the overflow is real.
+    expect(() => crrPrice({ ...contract, optionType: 'call', exerciseStyle: 'european' })).toThrow(
+      /cannot be represented/,
+    );
   });
 
   it('rejects a tree whose risk-neutral probability leaves [0, 1]', () => {
