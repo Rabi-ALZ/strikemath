@@ -63,13 +63,6 @@ function boundaryGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): G
   // 1 in the money, 0 out of it, 0.5 exactly at the kink.
   const indicator = signedEdge === 0 ? 0.5 : signedEdge > 0 ? 1 : 0;
 
-  // Out of the money every sensitivity is zero. Returning it as a literal rather than as
-  // `sign * 0` keeps a put from reporting -0, which compares unequal to 0 under Object.is and
-  // would surprise anyone aggregating Greeks across a position.
-  if (indicator === 0) {
-    return { delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0 };
-  }
-
   return {
     delta: sign * indicator * Math.exp(-dividendYield * timeToExpiry),
     gamma: 0,
@@ -79,7 +72,34 @@ function boundaryGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): G
   };
 }
 
+/**
+ * Replaces any `-0` with `0`.
+ *
+ * A put reaches `-0` in two separate ways: out of the money at the boundary, where the sign
+ * multiplies a zero indicator, and deep out of the money in the analytic branch, where
+ * `normalCdf(-d1)` underflows and the leading minus sign survives. `-0` compares unequal to `0`
+ * under `Object.is`, so it propagates into any aggregation across a position and shows up as a
+ * spurious difference that no arithmetic explains.
+ *
+ * Applied once, to every field, on every path. The first fix for this covered only the boundary
+ * branch and left the analytic one — which is precisely why it is now a single choke point
+ * rather than a guard at each site where the hazard was noticed.
+ */
+function withoutNegativeZero(greeks: Greeks): Greeks {
+  return {
+    delta: greeks.delta === 0 ? 0 : greeks.delta,
+    gamma: greeks.gamma === 0 ? 0 : greeks.gamma,
+    vega: greeks.vega === 0 ? 0 : greeks.vega,
+    theta: greeks.theta === 0 ? 0 : greeks.theta,
+    rho: greeks.rho === 0 ? 0 : greeks.rho,
+  };
+}
+
 function computeGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): Greeks {
+  return withoutNegativeZero(rawGreeks(inputs, optionType));
+}
+
+function rawGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): Greeks {
   if (inputs.timeToExpiry === 0 || inputs.volatility === 0) {
     return boundaryGreeks(inputs, optionType);
   }

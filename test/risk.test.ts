@@ -158,6 +158,10 @@ describe('probabilities under Q', () => {
     expect(() => probabilityOfProfitUnderQ({ ...base, optionType: 'call', premium: -1 })).toThrow(
       /premium/,
     );
+    expect(() =>
+      // @ts-expect-error deliberately passing a value the type system forbids
+      probabilityOfProfitUnderQ({ ...base, optionType: 'digital', premium: 1 }),
+    ).toThrow(InvalidInputError);
   });
 });
 
@@ -216,6 +220,15 @@ describe('Value at Risk', () => {
     });
 
     expect(historical).toBeCloseTo(parametric, 4);
+  });
+
+  it('handles a single observation, where there is no interval to interpolate across', () => {
+    // One observation is the whole distribution as far as the empirical estimator knows.
+    for (const confidenceLevel of [0.01, 0.5, 0.99]) {
+      expect(historicalVar({ returns: [-0.04], confidenceLevel })).toBeCloseTo(0.04, 15);
+      expect(historicalCvar({ returns: [-0.04], confidenceLevel })).toBeCloseTo(0.04, 15);
+    }
+    expect(historicalVar({ returns: [0.02], confidenceLevel: 0.95 })).toBeCloseTo(-0.02, 15);
   });
 
   it('never reports a loss of negative zero', () => {

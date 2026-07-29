@@ -400,7 +400,47 @@ tolerance.
 Inputs outside this domain are not rejected — the functions still validate and compute — but the
 accuracy statements above are only claimed inside it.
 
-### 9.1 The resolution floor
+### 9.1 An extra constraint on `crrPrice`
+
+The domain above governs the analytic functions. The binomial tree carries one more constraint,
+because its highest terminal node is `S u^n = e^(ln S + sigma sqrt(T n))`. The tree fits in a
+double only while
+
+```
+ln S + sigma sqrt(T n) <= ln(Number.MAX_VALUE) ~ 709.78
+```
+
+which couples `steps` to volatility:
+
+```
+n <= ((709 - ln S) / sigma)^2 / T
+```
+
+Across the documented domain — `S, K <= 10 000`, `T <= 10` — this stays above the 20 000 step cap
+for any `sigma` up to about **1.5**, so an ordinary contract never meets it. Measured, by
+bisecting on the largest step count the implementation accepts:
+
+| `S`    | `T` | `sigma` | Largest usable `steps`          |
+| ------ | --- | ------- | ------------------------------- |
+| 100    | 1   | 0.3     | 20 000 (the cap, not the limit) |
+| 10 000 | 10  | 1.5     | 20 000 (the cap, not the limit) |
+| 10 000 | 10  | 1.6     | 19 129                          |
+| 100    | 1   | 5       | 19 846                          |
+| 10 000 | 10  | 5       | 1 958                           |
+
+`crrPrice` checks this before doing any work and throws `InvalidInputError` naming the largest
+step count that fits. It does not silently reduce `steps`, because that would answer a different
+question than the one asked.
+
+Two properties of this limit are worth stating plainly. It is reached by **raising** `steps` —
+the same contract prices correctly at a coarser tree — and it applies only to the tree: `bsPrice`
+has no such limit and prices those European contracts without difficulty.
+
+Working in log space, or pruning the branches whose probability is negligible, would lift the
+constraint. Neither is implemented: both would need their own verification, and 160% volatility
+with a five-figure step count is not a real use case. If it becomes one, that is the fix.
+
+### 9.2 The resolution floor
 
 A price is a difference of two terms of order `S` and `K`, so it carries an absolute rounding of
 a few ulp of the larger. Where the true difference between two prices falls below that, the

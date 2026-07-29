@@ -158,6 +158,57 @@ describe('arbitrage and bracket boundaries', () => {
     );
   });
 
+  it('reports a price below the bracket floor as a convergence failure, not as arbitrage', () => {
+    // At the forward the discounted intrinsic is 0, but the price at the bracket's smallest
+    // volatility is not — it is about 4e-5. A price between the two violates no arbitrage bound;
+    // the implied volatility is real, just smaller than this solver searches for. That is a
+    // ConvergenceError, and the message has to say which of the two it is.
+    const timeToExpiry = 1;
+    const riskFreeRate = 0.05;
+    const dividendYield = 0.01;
+    const spot = 100;
+    const strike = spot * Math.exp((riskFreeRate - dividendYield) * timeToExpiry);
+
+    const atFloor = bsCall({
+      spot,
+      strike,
+      timeToExpiry,
+      riskFreeRate,
+      dividendYield,
+      volatility: 1e-6,
+    });
+    expect(atFloor).toBeGreaterThan(1e-8);
+
+    expect(() =>
+      impliedVolatility({
+        spot,
+        strike,
+        timeToExpiry,
+        riskFreeRate,
+        dividendYield,
+        optionPrice: atFloor / 1000,
+        optionType: 'call',
+      }),
+    ).toThrow(ConvergenceError);
+  });
+
+  it('returns the collapsed bracket rather than failing when the tolerance is unreachable', () => {
+    // A tolerance below the resolution of a double can never be met. The bracket still narrows to
+    // adjacent representable volatilities, and that midpoint is the best answer that exists — so
+    // it is returned, not thrown away.
+    const optionPrice = bsCall({ ...base, volatility: 0.37 });
+    const recovered = impliedVolatility({
+      ...base,
+      optionPrice,
+      optionType: 'call',
+      priceTolerance: 1e-300,
+      maxIterations: 200,
+    });
+
+    expect(recovered).toBeCloseTo(0.37, 12);
+    expect(Number.isFinite(recovered)).toBe(true);
+  });
+
   it('solves at the very edges of the bracket', () => {
     const atCeiling = bsCall({ ...base, volatility: MAX_IMPLIED_VOLATILITY });
     expect(impliedVolatility({ ...base, optionPrice: atCeiling, optionType: 'call' })).toBeCloseTo(

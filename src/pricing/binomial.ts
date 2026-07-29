@@ -40,6 +40,36 @@ const MAX_BINOMIAL_STEPS = 20_000;
 /** `ln(Number.MAX_VALUE)`, with a little room to spare. Beyond it a node price is `Infinity`. */
 const MAX_REPRESENTABLE_LOG_PRICE = 709;
 
+/**
+ * The largest step count whose tree still fits in a double, for a given contract.
+ *
+ * The highest terminal node is `S u^n = e^(ln S + sigma sqrt(T n))`, so the constraint is
+ * `ln S + sigma sqrt(T n) <= ln(MAX_VALUE)`, which solves to
+ *
+ * ```
+ * n <= ((ln(MAX_VALUE) - ln S) / sigma)^2 / T
+ * ```
+ *
+ * This binds only at high volatility. Across the documented domain — `S, K <= 10 000`,
+ * `T <= 10` — it stays above the 20 000 step cap for any `sigma` up to about 1.5, so an ordinary
+ * contract never meets it. It is real from roughly `sigma = 1.6` upwards.
+ *
+ * Only ever called from the representability guard, which is reached only when `u != d` — so
+ * `volatility` and `timeToExpiry` are both non-zero here and need no special case.
+ *
+ * @param inputs - Resolved option inputs.
+ * @returns The largest usable `steps`, capped at {@link MAX_BINOMIAL_STEPS}. **0 when no step
+ *          count works at all**, which happens when the spot on its own already sits at the top
+ *          of the double range and no tree can be built around it.
+ */
+function maxRepresentableSteps(inputs: ResolvedOptionInputs): number {
+  const headroom = MAX_REPRESENTABLE_LOG_PRICE - Math.log(inputs.spot);
+  if (headroom <= 0) return 0;
+
+  const limit = Math.floor(headroom ** 2 / (inputs.volatility ** 2 * inputs.timeToExpiry));
+  return Math.max(1, Math.min(limit, MAX_BINOMIAL_STEPS));
+}
+
 /** {@link OptionInputs} plus the contract side, exercise style and tree resolution. */
 export interface BinomialInputs extends OptionInputs {
   readonly optionType: OptionType;
@@ -96,10 +126,18 @@ function deterministicValue(
  *
  * @param inputs - Named option inputs plus `optionType`, `exerciseStyle` and optionally `steps`.
  * @returns The present value of the option.
+ * **`crrPrice` carries one constraint the analytic pricers do not.** The highest terminal node is
+ * `S u^n = e^(ln S + sigma sqrt(T n))`, so `steps` and `volatility` are coupled: the tree only
+ * fits in a double while `ln S + sigma sqrt(T n) <= 709`. Across the documented domain this stays
+ * above the 20 000 step cap for any volatility up to about 1.5, so an ordinary contract never
+ * meets it — but at 160% volatility and above it is real, and it is reached by *raising* `steps`.
+ * The error names the largest step count that fits. See docs/MATH.md §9.2.
+ *
  * @throws InvalidInputError if an input is out of range, if `steps` is not a positive integer no
- *         greater than 20 000, or if the tree's risk-neutral probability falls outside `[0, 1]`
- *         — which means the up and down moves cannot straddle the forward and the tree admits
- *         arbitrage. More steps usually fixes it.
+ *         greater than 20 000, if the tree's terminal nodes exceed the double range, or if the
+ *         tree's risk-neutral probability falls outside `[0, 1]` — which means the up and down
+ *         moves cannot straddle the forward and the tree admits arbitrage. More steps usually
+ *         fixes the latter.
  *
  * @example
  * ```ts
@@ -158,11 +196,17 @@ function priceTree(
   // represented, and no number it produced could be trusted.
   const largestLogPrice = Math.log(spot) + volatility * Math.sqrt(timeToExpiry * steps);
   if (largestLogPrice > MAX_REPRESENTABLE_LOG_PRICE) {
+    const usable = maxRepresentableSteps(inputs);
+    const advice =
+      usable === 0
+        ? 'No step count works: the spot alone already sits at the top of the double range.'
+        : `The largest step count that fits is ${usable}.`;
+
     throw new InvalidInputError(
       `the tree cannot be represented: with volatility ${volatility}, timeToExpiry ` +
         `${timeToExpiry} and ${steps} steps the highest terminal node is e^${largestLogPrice.toFixed(1)}, ` +
-        'beyond the largest finite double. Reduce steps, or price a European contract with ' +
-        'bsPrice, which has no such limit.',
+        `beyond the largest finite double. ${advice} Alternatively price a European contract ` +
+        'with bsPrice, which has no such limit.',
     );
   }
 

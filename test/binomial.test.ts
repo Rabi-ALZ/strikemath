@@ -244,6 +244,37 @@ describe('validation', () => {
     expect(priced).toBeCloseTo(bsCall(extreme), 1);
   });
 
+  it('names the largest step count that would fit, and says so when none would', () => {
+    // The message has to be actionable: "reduce steps" is useless without a target.
+    const extreme = {
+      spot: 100,
+      strike: 100,
+      timeToExpiry: 1,
+      riskFreeRate: 0.05,
+      volatility: 5,
+      optionType: 'call' as const,
+      exerciseStyle: 'european' as const,
+    };
+
+    expect(() => crrPrice({ ...extreme, steps: 20_000 })).toThrow(/largest step count that fits/);
+
+    // And the number it names must actually work, while one more must not.
+    let named = 0;
+    try {
+      crrPrice({ ...extreme, steps: 20_000 });
+    } catch (error) {
+      named = Number(/fits is (\d+)/.exec((error as Error).message)?.[1]);
+    }
+    expect(named).toBeGreaterThan(0);
+    expect(Number.isFinite(crrPrice({ ...extreme, steps: named }))).toBe(true);
+
+    // A spot at the very top of the double range admits no tree at all, and the message must say
+    // that rather than naming a step count that cannot work either.
+    expect(() => crrPrice({ ...extreme, spot: 1e308, strike: 1e308, steps: 100 })).toThrow(
+      /No step count works/,
+    );
+  });
+
   it('rejects a tree whose risk-neutral probability leaves [0, 1]', () => {
     // With a large drift and a small volatility the up and down moves cannot straddle the
     // forward, and the tree admits arbitrage. Returning a number here would be silently wrong.

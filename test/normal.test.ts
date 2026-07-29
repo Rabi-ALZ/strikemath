@@ -200,6 +200,21 @@ describe('inverseNormalCdf', () => {
     }
   });
 
+  it('returns the unrefined estimate where the Halley step would overflow', () => {
+    // Below roughly p = 1e-300 the quantile is past -37.6, and `exp(x^2 / 2)` in the refinement
+    // step overflows to Infinity. The step is skipped rather than allowed to produce NaN, and
+    // Acklam's own accuracy is what remains — which is far finer than the resolution of p there.
+    for (const p of [1e-300, 1e-310, 5e-320]) {
+      const x = inverseNormalCdf(p);
+      expect(Number.isFinite(x), `inverseNormalCdf(${p}) = ${x}`).toBe(true);
+      expect(x).toBeLessThan(-37);
+      expect(x).toBeGreaterThan(-40);
+    }
+
+    // Still monotone across the point where the refinement stops being applied.
+    expect(inverseNormalCdf(1e-300)).toBeGreaterThan(inverseNormalCdf(1e-310));
+  });
+
   it('rejects probabilities outside (0, 1)', () => {
     expect(() => inverseNormalCdf(0)).toThrow(/probability/i);
     expect(() => inverseNormalCdf(1)).toThrow(/probability/i);

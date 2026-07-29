@@ -8,20 +8,20 @@ The library is built, verified and committed. Nothing is published yet.
 
 ### What exists
 
-| Area | File | Exports |
-| --- | --- | --- |
-| Normal distribution | `src/utils/normal.ts` | `normalPdf`, `normalCdf`, `inverseNormalCdf` |
-| Shared types | `src/utils/types.ts` | `OptionInputs`, `OptionType`, `Greeks` |
-| Validation | `src/utils/validate.ts` | `InvalidInputError`, input resolution |
-| Pricing | `src/pricing/blackScholes.ts` | `bsCall`, `bsPut`, `bsPrice`, `d1d2` |
-| Pricing | `src/pricing/binomial.ts` | `crrPrice`, European and American |
-| Greeks | `src/greeks/analytical.ts` | `callGreeks`, `putGreeks`, `optionGreeks`, individual accessors |
-| Scaling | `src/greeks/scaling.ts` | the four named unit conversions |
-| Volatility | `src/volatility/impliedVol.ts` | `impliedVolatility`, `ConvergenceError` |
-| Risk | `src/risk/probability.ts` | the four `...UnderQ` probabilities |
-| Risk | `src/risk/var.ts`, `cvar.ts` | historical and parametric VaR and CVaR |
-| Risk | `src/risk/kelly.ts` | `kellyFraction`, `fractionalKelly` |
-| Public API | `src/index.ts` | named exports only, no default export |
+| Area                | File                           | Exports                                                         |
+| ------------------- | ------------------------------ | --------------------------------------------------------------- |
+| Normal distribution | `src/utils/normal.ts`          | `normalPdf`, `normalCdf`, `inverseNormalCdf`                    |
+| Shared types        | `src/utils/types.ts`           | `OptionInputs`, `OptionType`, `Greeks`                          |
+| Validation          | `src/utils/validate.ts`        | `InvalidInputError`, input resolution                           |
+| Pricing             | `src/pricing/blackScholes.ts`  | `bsCall`, `bsPut`, `bsPrice`, `d1d2`                            |
+| Pricing             | `src/pricing/binomial.ts`      | `crrPrice`, European and American                               |
+| Greeks              | `src/greeks/analytical.ts`     | `callGreeks`, `putGreeks`, `optionGreeks`, individual accessors |
+| Scaling             | `src/greeks/scaling.ts`        | the four named unit conversions                                 |
+| Volatility          | `src/volatility/impliedVol.ts` | `impliedVolatility`, `ConvergenceError`                         |
+| Risk                | `src/risk/probability.ts`      | the four `...UnderQ` probabilities                              |
+| Risk                | `src/risk/var.ts`, `cvar.ts`   | historical and parametric VaR and CVaR                          |
+| Risk                | `src/risk/kelly.ts`            | `kellyFraction`, `fractionalKelly`                              |
+| Public API          | `src/index.ts`                 | named exports only, no default export                           |
 
 Documentation: `README.md`, `docs/MATH.md`, `docs/DECISIONS.md`, `docs/ROADMAP.md`, this file.
 Examples: four TypeScript examples plus a smoke test against the built package.

@@ -55,6 +55,9 @@ No runtime-configurable scaling, no units option object.
 - **Never work outside this directory.**
 - Put-call parity is a structural identity, not a precision requirement. If the parity test
   fails, the fault is in the reflection or the input domain — never in the CDF's accuracy.
+- **Run `quant-verifier` AFTER fixing what it found, not only before.** Fixes come from the same
+  mental model that produced the defect. Its boundary checklist is the canonical one — work
+  through `.claude/agents/quant-verifier.md`, do not restate it elsewhere.
 - Analysis and education only, never personal investment advice.
 
 @docs/MATH.md
