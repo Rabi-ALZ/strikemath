@@ -160,15 +160,26 @@ contributor and CI run resolves dependencies with the same package manager build
 
 ---
 
-## 2026-07-29 — TypeScript pinned to 6.0.3
+## 2026-07-29 — TypeScript pinned to 6.0.3 — TEMPORARY
+
+> **Status: temporary.**
+> **Trigger to revisit: when `typescript-eslint` supports TypeScript 7.**
+> Check with `npm view typescript-eslint peerDependencies`. Once the range admits 7.x, raise
+> `typescript` to the current release, drop `ignoreDeprecations` from `tsconfig.json` if `tsup`
+> has stopped injecting `baseUrl`, and supersede this entry.
 
 TypeScript 7.0.2 is current, but `typescript-eslint` 8.65.0 declares
-`typescript: ">=4.8.4 <6.1.0"` and refuses to load against 7.x. Linting the source is worth more
-here than being on the newest compiler. Revisit when typescript-eslint supports TypeScript 7.
+`typescript: ">=4.8.4 <6.1.0"` and refuses to load against 7.x — it throws
+`typescript-eslint does not support TS 7.0` at config load, so `pnpm lint` does not run at all.
+Linting the source is worth more here than being on the newest compiler.
 
-A related consequence: `tsup`'s declaration build injects `baseUrl`, which TypeScript 6
-deprecates, so `ignoreDeprecations: "6.0"` is set in `tsconfig.json`. Nothing in this repository
-sets `baseUrl` itself.
+Nothing in the library depends on a TypeScript 7 feature, so this pin costs no expressiveness.
+It is recorded as a decision only because it is a deliberate step backwards from the current
+release and would otherwise look like neglect.
+
+A related consequence, which shares the same trigger: `tsup`'s declaration build injects
+`baseUrl`, which TypeScript 6 deprecates, so `ignoreDeprecations: "6.0"` is set in
+`tsconfig.json`. Nothing in this repository sets `baseUrl` itself.
 
 ---
 
@@ -189,3 +200,49 @@ adaptive precision. Two details were found the hard way and are guarded in the g
 
 Several values recalled from memory during initial drafting were wrong in the last one or two
 digits. That is the reason this generator exists.
+
+---
+
+## 2026-07-29 — Five defects found by adversarial review, and what they had in common
+
+An adversarial review of `/src` by the `quant-verifier` subagent found five real defects after the
+test suite was already green at 146 assertions. All five are fixed and each carries a regression
+test. They are recorded here because the pattern is worth remembering.
+
+1. **`crrPrice` returned `Infinity`.** The highest terminal node is `e^(ln S + sigma sqrt(T n))`,
+   which overflows for inputs inside the documented domain — `S = K = 100`, `T = 1`, `sigma = 5`,
+   `n = 20 000`. A call payoff of `Infinity` propagated to the root. Worse, the failure appeared
+   _when the caller raised `n` to get a better answer_: the same contract priced correctly at
+   `n = 1000`. Now checked before any work is done, and refused with a message that says what to
+   do instead.
+
+2. **`probabilityItmUnderQ` reported an expiring at-the-money put as certain.** The degenerate
+   branch returned `terminal > level ? 1 : 0`, and the put case was computed as `1 - above`. At
+   `terminal === level` both strict inequalities are false, so both probabilities should be 0 —
+   but the complement turned one of them into 1. The library simultaneously priced the put at 0
+   and reported a certainty of finishing in the money.
+
+3. **The put probability was `1 - N(d2)` rather than the documented `N(-d2)`.** Algebraically
+   identical, numerically not: at `d2 = 10.4` the complement returns a hard 0 where `N(-d2)` is
+   1.04e-25 — a representable number the CDF produces to 1.6e-16 relative accuracy. This one is
+   the sharpest of the five, because it discarded, in a thin wrapper, exactly the tail accuracy
+   that the deviation from West's constants exists to provide.
+
+4. **`normalCdf` truncated the tail at |z| = 37.** The cutoff was justified in a comment by
+   `1 - Q(z)` being indistinguishable from 1 beyond it — true, and irrelevant to `Q` itself, which
+   stays representable to |z| ~ 38.5. Some nineteen orders of magnitude were being thrown away.
+   The cutoff is gone; `Math.exp` underflows on its own where 0 is correct.
+
+5. **`historicalVar` could return `-0`.** Negating a flat return produced `-0`, which compares
+   unequal to `0` under `Object.is`. The identical hazard had already been identified and guarded
+   in `boundaryGreeks` and was simply not applied here.
+
+**What they had in common.** Four of the five sit at a boundary the tests exercised only from one
+side: a strict inequality at the point of equality, a complement in the tail, a cutoff constant, a
+signed zero. None was a wrong formula; every formula in the library was correct. The defects were
+in the _transitions_ — between the continuous case and the degenerate one, between a representable
+value and an unrepresentable one, between an identity that holds in exact arithmetic and its
+behaviour in floating point.
+
+A green suite says the cases you thought of pass. It says nothing about the cases you did not, and
+the boundaries are where those live.

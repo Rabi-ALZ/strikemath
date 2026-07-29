@@ -268,6 +268,9 @@ const CDF_POINTS = [
   '-25',
   '-30',
   '-36',
+  // Past the z = 37 mark that a truncating implementation would report as 0. Q(-37) is 5.7e-300,
+  // four orders of magnitude above the smallest normal double.
+  '-37',
 ];
 
 const QUANTILE_POINTS = [

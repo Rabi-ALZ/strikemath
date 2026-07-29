@@ -126,6 +126,11 @@ function computeGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): Gr
 /**
  * All five Greeks of a European call, in raw units.
  *
+ * **At the boundary** — `timeToExpiry` or `volatility` exactly 0 — there is no randomness left,
+ * so gamma and vega are 0 and the others are derivatives of the deterministic payoff. Exactly at
+ * the strike that payoff has no derivative, and delta is reported as the midpoint of the
+ * subgradient: **0.5 for a call, -0.5 for a put**. That is a convention, not a computed value.
+ *
  * @param inputs - Named option inputs. `dividendYield` defaults to 0.
  * @returns delta per 1.0 spot, gamma per 1.0 spot squared, vega per 1.00 volatility,
  *          theta per year, rho per 1.00 rate.
@@ -138,6 +143,11 @@ export function callGreeks(inputs: OptionInputs): Greeks {
 /**
  * All five Greeks of a European put, in raw units.
  *
+ * **At the boundary** — `timeToExpiry` or `volatility` exactly 0 — there is no randomness left,
+ * so gamma and vega are 0 and the others are derivatives of the deterministic payoff. Exactly at
+ * the strike that payoff has no derivative, and delta is reported as the midpoint of the
+ * subgradient: **-0.5 for a put, 0.5 for a call**. That is a convention, not a computed value.
+ *
  * @param inputs - Named option inputs. `dividendYield` defaults to 0.
  * @returns delta per 1.0 spot, gamma per 1.0 spot squared, vega per 1.00 volatility,
  *          theta per year, rho per 1.00 rate.
@@ -149,6 +159,10 @@ export function putGreeks(inputs: OptionInputs): Greeks {
 
 /**
  * All five Greeks of a European option on either side, in raw units.
+ *
+ * **At the boundary** — `timeToExpiry` or `volatility` exactly 0 — gamma and vega are 0, and
+ * exactly at the strike delta is the midpoint of the subgradient: **0.5 for a call, -0.5 for a
+ * put**. That is a convention, not a computed value.
  *
  * @param inputs - Named option inputs plus `optionType`.
  * @throws InvalidInputError if any input is out of range or `optionType` is not recognised.
@@ -166,6 +180,13 @@ export function optionGreeks(inputs: GreeksInputs): Greeks {
  * Delta: sensitivity of the option price to the underlying, per 1.0 of spot.
  *
  * Bounded by `[0, 1]` for a call and `[-1, 0]` for a put.
+ *
+ * **At the kink.** When `timeToExpiry` or `volatility` is exactly 0 the payoff is piecewise
+ * linear, and at `spot === strike` it has no derivative at all — the subgradient there is the
+ * whole interval `[0, 1]` for a call and `[-1, 0]` for a put. This returns its **midpoint: 0.5
+ * for a call, -0.5 for a put**. It is the conventional choice, and it is a convention rather
+ * than a computed value; away from the strike the reported delta is the true one-sided slope,
+ * 1 or 0 for a call and -1 or 0 for a put.
  */
 export function delta(inputs: GreeksInputs): number {
   return optionGreeks(inputs).delta;

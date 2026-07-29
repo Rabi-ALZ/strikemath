@@ -31,6 +31,21 @@ export { inverseNormalCdf, normalCdf, normalPdf } from './utils/normal.js';
 export { bsCall, bsPrice, bsPut, d1d2 } from './pricing/blackScholes.js';
 export type { BlackScholesD1D2, BlackScholesPriceInputs } from './pricing/blackScholes.js';
 
+export { crrPrice, DEFAULT_BINOMIAL_STEPS } from './pricing/binomial.js';
+export type { BinomialInputs, ExerciseStyle } from './pricing/binomial.js';
+
+// ---------------------------------------------------------------------------- volatility
+
+export {
+  ConvergenceError,
+  DEFAULT_MAX_ITERATIONS,
+  DEFAULT_PRICE_TOLERANCE,
+  MAX_IMPLIED_VOLATILITY,
+  MIN_IMPLIED_VOLATILITY,
+  impliedVolatility,
+} from './volatility/impliedVol.js';
+export type { ImpliedVolatilityInputs } from './volatility/impliedVol.js';
+
 // ---------------------------------------------------------------------------- greeks
 
 export {
@@ -52,3 +67,25 @@ export {
   thetaPerTradingDay,
   vegaPerPercentagePoint,
 } from './greeks/scaling.js';
+
+// ---------------------------------------------------------------------------- risk
+//
+// Every probability here is under the risk-neutral measure Q and is named accordingly. A
+// Q-probability is a price expressed in probability units, not a forecast. See docs/MATH.md §2.
+
+export {
+  probabilityAboveUnderQ,
+  probabilityBelowUnderQ,
+  probabilityItmUnderQ,
+  probabilityOfProfitUnderQ,
+} from './risk/probability.js';
+export type { ItmInputs, LevelInputs, ProfitInputs } from './risk/probability.js';
+
+export { historicalVar, parametricVar } from './risk/var.js';
+export type { HistoricalVarInputs, ParametricVarInputs } from './risk/var.js';
+
+export { historicalCvar, historicalLossQuantile, parametricCvar } from './risk/cvar.js';
+export type { HistoricalCvarInputs, ParametricCvarInputs } from './risk/cvar.js';
+
+export { fractionalKelly, kellyFraction } from './risk/kelly.js';
+export type { KellyInputs } from './risk/kelly.js';

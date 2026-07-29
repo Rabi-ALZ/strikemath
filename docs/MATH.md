@@ -76,7 +76,7 @@ N(x) + N(-x) = 1
 ```
 
 holds to machine precision by construction. This matters more than it looks: put-call parity
-depends on this identity and on nothing else (§5.1). **If a parity test fails, the fault is in the
+depends on this identity and on nothing else (§6.1). **If a parity test fails, the fault is in the
 reflection or in the input domain — never in the CDF's accuracy.**
 
 ### 3.4 Accuracy, and the deviation from West
@@ -102,8 +102,12 @@ Measured against 40-digit ground truth:
 Absolute error is around 1e-16 or better everywhere. For pricing this is the number that matters,
 since `N` always enters multiplied by `S` or `K`.
 
-Beyond |z| = 37 the tail is smaller than the smallest positive double relative to 1, and the only
-representable answer is exactly 0.
+**There is no tail cutoff.** A cutoff at |z| = 37 is a common one, justified by `1 - Q(z)` being
+indistinguishable from 1 beyond it. That is true, and it says nothing about `Q` itself: `Q(37)` is
+5.7e-300, four orders of magnitude above the smallest normal double, and `Q` stays representable
+to about |z| = 38.5. Truncating at 37 would discard some nineteen orders of magnitude of exactly
+the relative tail accuracy this implementation exists to provide. `Math.exp` underflows to 0 on
+its own where 0 is the right answer, so nothing needs to be forced.
 
 ### 3.5 Quantile function
 
@@ -167,7 +171,57 @@ surfaces as an error at the call site instead of travelling silently into a risk
 
 ---
 
-## 5. Greeks
+## 5. Cox-Ross-Rubinstein binomial tree
+
+For American exercise, where no closed form exists.
+
+```
+dt = T / n
+u  = e^(sigma sqrt(dt))            d = 1 / u
+p  = (e^((r - q) dt) - d) / (u - d)
+```
+
+The tree is priced by backward induction from the terminal payoff. At each node the continuation
+value is `e^(-r dt) [ p V_up + (1 - p) V_down ]`; for American exercise the node value is the
+greater of that and immediate exercise.
+
+Convergence to Black-Scholes is `O(1/n)` and **oscillates**, so a coarse tree can land close to
+the analytic value by luck. Use enough steps that the answer is stable, not merely plausible.
+
+### 5.1 When the tree is not valid
+
+**`p` outside `[0, 1]`.** If the drift is large relative to `sigma sqrt(dt)`, the up and down
+moves cannot straddle the forward and the tree admits arbitrage. `crrPrice` throws rather than
+returning a number, since the number would be silently wrong. More steps normally resolves it:
+`p` stays inside `[0, 1]` while `sigma sqrt(dt) > |r - q| dt`, so shrinking `dt` helps.
+
+**Terminal nodes beyond the double range.** The highest terminal node sits at
+`S u^n = e^(ln S + sigma sqrt(T n))`. Past `ln(Number.MAX_VALUE)` it becomes `Infinity`, a call
+payoff there becomes `Infinity`, and backward induction carries it to the root. `crrPrice` throws
+rather than returning that. The condition is reachable inside the documented domain — `S = K = 100`,
+`T = 1`, `sigma = 5`, `n = 20 000` — and it is reached precisely by raising `n` to get a better
+answer, so it is checked before any work is done. Reduce `n`, or price a European contract with
+`bsPrice`, which has no such limit.
+
+**`u = d = 1`.** The tree collapses when `volatility` is 0, `timeToExpiry` is 0, or
+`sigma sqrt(dt)` underflows. Backward induction cannot be used here — and not because of a
+division by zero. In a CRR tree the drift is carried by the transition probability, not by the
+size of the moves, so with `u = d = 1` the underlying never leaves `S`: every terminal node would
+sit at today's spot rather than at the forward, and the tree would return the intrinsic value of
+an unchanged spot. That is the wrong number, not merely an imprecise one.
+
+With no randomness the path is deterministic at `S(t) = S e^((r - q) t)`, so the implementation
+evaluates it directly: a European option is worth `e^(-rT) payoff(S(T))`, and an American option
+the best discounted payoff available at any exercise date on the same grid the tree would have
+offered,
+
+```
+max over t in {0, dt, 2dt, ..., T} of  e^(-rt) payoff(S(t))
+```
+
+---
+
+## 6. Greeks
 
 All values are returned in **raw units**. See [DECISIONS.md](./DECISIONS.md) for why, and
 `greeks/scaling.ts` for the named conversions.
@@ -186,7 +240,7 @@ Conversions: `vegaPerPercentagePoint` divides by 100, `thetaPerCalendarDay` by 3
 Boundary behaviour at `T = 0` or `sigma = 0`, including the subgradient convention at the kink,
 is recorded in [DECISIONS.md](./DECISIONS.md).
 
-### 5.1 Put-call parity
+### 6.1 Put-call parity
 
 ```
 C - P = S e^(-qT) - K e^(-rT)
@@ -203,7 +257,120 @@ why §3.3 matters and why a parity failure never points at the CDF.
 
 ---
 
-## 6. The documented input domain
+## 7. Implied volatility
+
+The volatility that reproduces an observed price. There is no closed form, so it is found
+numerically by inverting the pricer.
+
+### 7.1 Safeguarded Newton-Raphson
+
+Newton's method on vega converges quadratically where vega is healthy and diverges where it is
+not — far out of the money or close to expiry, vega collapses and a Newton step can land
+anywhere. The solver therefore maintains a bracket, initially `[1e-6, 5]`, and **any Newton step
+that would leave it is replaced by a bisection**. Bisection alone always converges; Newton alone
+does not.
+
+The bracket update is sound because the price is monotonically increasing in volatility, so the
+sign of the price error says unambiguously which side of the root the current guess is on.
+
+The initial guess is Brenner-Subrahmanyam, `sigma ~ sqrt(2 pi / T) * price / S`, which is exact
+for an at-the-money forward.
+
+### 7.2 What is guaranteed, and what is not
+
+**Guaranteed:** the returned volatility reproduces the input price to within `priceTolerance`,
+default 1e-10. Failure is always an exception — `InvalidInputError` for a malformed input or an
+arbitrage-violating price, `ConvergenceError` for a price inside the arbitrage bounds but outside
+the search bracket, or for exhausting the iteration cap. The function never returns `NaN`.
+
+**Not guaranteed:** that the volatility itself is precise. That follows from vega, not from the
+solver:
+
+```
+dSigma = dPrice / vega
+```
+
+A deep out-of-the-money weekly can have a vega around 3e-5, so even an exactly matched price pins
+sigma only to about 3e-6. Where vega has collapsed entirely the price carries no information
+about volatility at all, and no solver can recover it.
+
+### 7.3 Arbitrage bounds
+
+Checked before any iteration, because a price outside them has no implied volatility at all:
+
+| Side | Lower bound                     | Upper bound |
+| ---- | ------------------------------- | ----------- |
+| Call | `max(S e^(-qT) - K e^(-rT), 0)` | `S e^(-qT)` |
+| Put  | `max(K e^(-rT) - S e^(-qT), 0)` | `K e^(-rT)` |
+
+The lower bound is the limit as volatility goes to 0, the upper bound the limit as it goes to
+infinity.
+
+---
+
+## 8. Risk measures
+
+### 8.1 Sign convention
+
+**Losses are positive numbers.** A VaR of 0.032 is a 3.2% loss. Return series passed in keep the
+opposite convention — a return of -0.032 is a 3.2% loss — because that is how returns are
+universally quoted. The conversion happens once, at the boundary.
+
+Results are in the units of the input: returns in, fractions out. Multiply by the position value
+for a currency amount.
+
+### 8.2 Value at Risk
+
+Historical VaR is the empirical quantile of the loss series, with linear interpolation between
+order statistics — the convention of R's `quantile(type = 7)` and NumPy's default.
+
+Parametric VaR assumes normality:
+
+```
+VaR_c = -mu + sigma z_c        where z_c = N^-1(c)
+```
+
+The normality assumption is wrong in the direction that matters: real return series have fatter
+tails than a normal, so parametric VaR understates the loss exactly where the number is relied
+on. VaR is also **not sub-additive** — a portfolio's VaR can exceed the sum of its parts'.
+
+### 8.3 Conditional Value at Risk
+
+The average loss given that the loss exceeds VaR. Unlike VaR it is sub-additive, which is why it
+is the coherent measure of the two.
+
+```
+CVaR_c = -mu + sigma phi(z_c) / (1 - c)
+```
+
+The historical estimator averages the worst `ceil((1 - c) n)` losses. At 99% on 50 observations
+that is an average over a single point — defined, but an anecdote rather than an estimate.
+
+`CVaR >= VaR` always holds at the same confidence level.
+
+### 8.4 Kelly criterion
+
+The stake fraction maximising expected log wealth:
+
+```
+f* = p / lossFraction - (1 - p) / winPayoff
+```
+
+which reduces to the classic `f* = (b p - (1 - p)) / b` when the whole stake is lost on a loss.
+
+Full Kelly is optimal only when the probability and payoffs are known exactly, the bet repeats
+indefinitely, outcomes are independent and the stake is infinitely divisible. Estimated edges
+break it fast: **overestimating the edge by a factor of two turns the growth-optimal bet into one
+with zero expected log growth.** Even with correct inputs the drawdowns are severe — the
+probability of halving the bankroll at some point under full Kelly is around 50%. Half or quarter
+Kelly gives up little growth for a large reduction in variance.
+
+A negative `f*` means negative expected value at those inputs. It is returned as computed rather
+than clamped to 0, so the size of the disadvantage stays visible.
+
+---
+
+## 9. The documented input domain
 
 Property tests generate inputs from this domain, and the guarantees below are stated on it:
 
@@ -233,7 +400,7 @@ tolerance.
 Inputs outside this domain are not rejected — the functions still validate and compute — but the
 accuracy statements above are only claimed inside it.
 
-### 6.1 The resolution floor
+### 9.1 The resolution floor
 
 A price is a difference of two terms of order `S` and `K`, so it carries an absolute rounding of
 a few ulp of the larger. Where the true difference between two prices falls below that, the
@@ -242,7 +409,7 @@ computed ordering between them can invert. Monotonicity is therefore asserted ag
 
 ---
 
-## 7. Sources
+## 10. Sources
 
 - Hull, J.C., _Options, Futures and Other Derivatives_. Example 13.6 and chapter 17 are the
   golden benchmarks in `test/hull.bench.test.ts`.

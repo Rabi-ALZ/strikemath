@@ -82,6 +82,26 @@ describe('normalCdf', () => {
   it('saturates to exactly 0 and 1 far outside the representable range', () => {
     expect(normalCdf(-40)).toBe(0);
     expect(normalCdf(40)).toBe(1);
+    expect(normalCdf(Number.POSITIVE_INFINITY)).toBe(1);
+    expect(normalCdf(Number.NEGATIVE_INFINITY)).toBe(0);
+  });
+
+  it('does not truncate the tail while it is still representable', () => {
+    // Regression. A cutoff at z = 37 is common, justified by `1 - Q(z)` being indistinguishable
+    // from 1 beyond it — which is true, and says nothing about Q itself. Q stays representable
+    // to about z = 38.5, and truncating at 37 would discard some nineteen orders of magnitude of
+    // exactly the relative tail accuracy this implementation exists to provide.
+    expect(normalCdf(-37)).toBeGreaterThan(0);
+    expect(normalCdf(-37.5)).toBeGreaterThan(0);
+    expect(normalCdf(-38)).toBeGreaterThan(0);
+
+    // And it must stay monotone across the region, with no step where a cutoff used to sit.
+    let previous = normalCdf(-36);
+    for (let x = -36.1; x >= -38.5; x -= 0.1) {
+      const current = normalCdf(x);
+      expect(current, `not monotone at x = ${x}`).toBeLessThanOrEqual(previous);
+      previous = current;
+    }
   });
 
   it('satisfies the reflection N(x) + N(-x) = 1 to machine precision', () => {

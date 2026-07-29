@@ -28,12 +28,6 @@ const SQRT_2PI = Math.sqrt(2 * Math.PI);
 const INV_SQRT_2PI = 1 / SQRT_2PI;
 
 /**
- * Beyond this the upper tail is smaller than the smallest positive double relative to 1, so the
- * only representable answer is exactly 0.
- */
-const TAIL_CUTOFF = 37;
-
-/**
  * Branch point between Hart's rational approximation and the Laplace continued fraction.
  *
  * West (2005) publishes this at 7.07106781186547 with a 5-level continued fraction above it.
@@ -80,8 +74,15 @@ const HART_Q7 = 0.0883883476483184;
  * accuracy far out in the tail, where the probability itself is tiny.
  */
 function upperTail(z: number): number {
-  if (z > TAIL_CUTOFF) return 0;
-
+  // There is deliberately no cutoff here. A cutoff at z = 37 is a common one, on the reasoning
+  // that beyond it `1 - Q(z)` is indistinguishable from 1 — which is true, but says nothing
+  // about Q itself. Q(37) is 5.7e-300, four orders of magnitude above the smallest normal
+  // double, and stays representable to about z = 38.5. Truncating there would throw away
+  // roughly nineteen orders of magnitude of exactly the relative tail accuracy this
+  // implementation exists to provide.
+  //
+  // `Math.exp` underflows to 0 on its own at z ~ 38.6, and the continued fraction stays finite
+  // for any z including Infinity, so the natural result is already 0 where 0 is correct.
   const density = Math.exp((-z * z) / 2);
 
   if (z < BODY_LIMIT) {

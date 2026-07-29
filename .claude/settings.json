@@ -3,6 +3,18 @@
     "deny": ["Read(./.env)", "Read(./.env.*)", "Read(*.pem)", "Read(*.key)", "Read(~/.ssh/**)"]
   },
   "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 300,
+            "command": "pnpm test"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
