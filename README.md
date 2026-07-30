@@ -117,18 +117,21 @@ be misread.
 
 ## What is in it
 
-| Module       | Exports                                                                                                 |
-| ------------ | ------------------------------------------------------------------------------------------------------- |
-| Pricing      | `bsCall`, `bsPut`, `bsPrice`, `d1d2`, `crrPrice` (European and American)                                |
-| Greeks       | `callGreeks`, `putGreeks`, `optionGreeks`, `delta`, `gamma`, `vega`, `theta`, `rho`                     |
-| Scaling      | `vegaPerPercentagePoint`, `thetaPerCalendarDay`, `thetaPerTradingDay`, `rhoPerPercentagePoint`          |
-| Volatility   | `impliedVolatility`                                                                                     |
-| Distribution | `normalPdf`, `normalCdf`, `inverseNormalCdf`                                                            |
-| Risk         | `probabilityItmUnderQ`, `probabilityOfProfitUnderQ`, `probabilityAboveUnderQ`, `probabilityBelowUnderQ` |
-|              | `historicalVar`, `parametricVar`, `historicalCvar`, `parametricCvar`                                    |
-|              | `kellyFraction`, `fractionalKelly`                                                                      |
+| Module       | Exports                                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| Pricing      | `bsCall`, `bsPut`, `bsPrice`, `d1d2`, `crrPrice` (European and American)                                 |
+| Greeks       | `callGreeks`, `putGreeks`, `optionGreeks`, `delta`, `gamma`, `vega`, `theta`, `rho`                      |
+| Scaling      | `vegaPerPercentagePoint`, `thetaPerCalendarDay`, `thetaPerTradingDay`, `rhoPerPercentagePoint`           |
+| Volatility   | `impliedVolatility`                                                                                      |
+| Distribution | `normalPdf`, `normalCdf`, `inverseNormalCdf`                                                             |
+| Risk         | `probabilityItmUnderQ`, `breakEvenProbabilityUnderQ`, `probabilityAboveUnderQ`, `probabilityBelowUnderQ` |
+|              | `historicalVar`, `parametricVar`, `historicalCvar`, `parametricCvar`                                     |
+|              | `kellyFraction`, `fractionalKelly`                                                                       |
 
 Named exports only — no default export. ESM and CJS builds, with TypeScript declarations.
+
+**On VaR and CVaR:** the horizon is the period of the returns you pass in, and the result does not
+carry it. Daily returns give a one-day figure. Say which wherever you report it.
 
 Runnable examples are in [`examples/`](./examples).
 
@@ -146,6 +149,16 @@ happen.
 The two coincide only if market participants are indifferent to risk, which they are not. Equity
 index puts trade far above their real-world probability because investors pay for protection, so
 `probabilityItmUnderQ` on a put systematically overstates how often it finishes in the money.
+
+**This is why there is no `probabilityOfProfit`.** Other tools ship a function by that name, often
+abbreviated POP. What it computes is what `breakEvenProbabilityUnderQ` computes here — a
+risk-neutral probability of finishing beyond break-even — and the two numbers agree. The name does
+not, because "probability of profit" makes a promise the number cannot keep, and a name has to
+survive being read in an autocomplete list, a UI label or a screenshot, where any qualifier in the
+documentation has long since fallen away.
+
+If what you want is how often a trade will actually make money, this library cannot tell you, and
+neither can any tool that only sees prices. That answer needs a view on expected returns.
 
 ---
 

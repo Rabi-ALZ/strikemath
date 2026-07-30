@@ -10,6 +10,9 @@
  * to it.
  *
  * CVaR is always at least as large as VaR at the same confidence level.
+ *
+ * **The horizon is the period of your returns**, exactly as in `var.ts`, and is not carried in the
+ * result. Daily returns give a one-day figure.
  */
 
 import { normalPdf, inverseNormalCdf } from '../utils/normal.js';

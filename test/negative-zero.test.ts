@@ -23,7 +23,7 @@ import {
   probabilityAboveUnderQ,
   probabilityBelowUnderQ,
   probabilityItmUnderQ,
-  probabilityOfProfitUnderQ,
+  breakEvenProbabilityUnderQ,
   putGreeks,
   rho,
   rhoPerPercentagePoint,
@@ -214,8 +214,8 @@ describe('no public function returns -0', () => {
           ),
         );
         outcomes.push(
-          ...outcomesOf('probabilityOfProfitUnderQ', () =>
-            probabilityOfProfitUnderQ({ ...inputs, optionType, premium: 0 }),
+          ...outcomesOf('breakEvenProbabilityUnderQ', () =>
+            breakEvenProbabilityUnderQ({ ...inputs, optionType, premium: 0 }),
           ),
         );
       }

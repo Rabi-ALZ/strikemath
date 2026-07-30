@@ -3,7 +3,7 @@ import {
   probabilityAboveUnderQ,
   probabilityBelowUnderQ,
   probabilityItmUnderQ,
-  probabilityOfProfitUnderQ,
+  breakEvenProbabilityUnderQ,
 } from '../src/risk/probability.js';
 import { historicalVar, parametricVar } from '../src/risk/var.js';
 import { historicalCvar, historicalLossQuantile, parametricCvar } from '../src/risk/cvar.js';
@@ -118,7 +118,7 @@ describe('probabilities under Q', () => {
   it('puts break-even beyond the strike for a long call', () => {
     const premium = bsCall(base);
     const atStrike = probabilityItmUnderQ({ ...base, optionType: 'call' });
-    const atBreakEven = probabilityOfProfitUnderQ({ ...base, optionType: 'call', premium });
+    const atBreakEven = breakEvenProbabilityUnderQ({ ...base, optionType: 'call', premium });
 
     // Profit requires finishing further out than merely in the money.
     expect(atBreakEven).toBeLessThan(atStrike);
@@ -128,14 +128,14 @@ describe('probabilities under Q', () => {
   it('puts break-even below the strike for a long put', () => {
     const premium = bsPut(base);
     const atStrike = probabilityItmUnderQ({ ...base, optionType: 'put' });
-    const atBreakEven = probabilityOfProfitUnderQ({ ...base, optionType: 'put', premium });
+    const atBreakEven = breakEvenProbabilityUnderQ({ ...base, optionType: 'put', premium });
 
     expect(atBreakEven).toBeLessThan(atStrike);
   });
 
   it('reduces to the in-the-money probability when the premium is zero', () => {
     for (const optionType of ['call', 'put'] as const) {
-      expect(probabilityOfProfitUnderQ({ ...base, optionType, premium: 0 })).toBeCloseTo(
+      expect(breakEvenProbabilityUnderQ({ ...base, optionType, premium: 0 })).toBeCloseTo(
         probabilityItmUnderQ({ ...base, optionType }),
         14,
       );
@@ -143,9 +143,9 @@ describe('probabilities under Q', () => {
   });
 
   it('reports zero profit probability for a put whose break-even is not positive', () => {
-    expect(probabilityOfProfitUnderQ({ ...base, strike: 10, optionType: 'put', premium: 20 })).toBe(
-      0,
-    );
+    expect(
+      breakEvenProbabilityUnderQ({ ...base, strike: 10, optionType: 'put', premium: 20 }),
+    ).toBe(0);
   });
 
   it('rejects malformed inputs', () => {
@@ -155,12 +155,12 @@ describe('probabilities under Q', () => {
     expect(() => probabilityItmUnderQ({ ...base, optionType: 'binary' })).toThrow(
       InvalidInputError,
     );
-    expect(() => probabilityOfProfitUnderQ({ ...base, optionType: 'call', premium: -1 })).toThrow(
+    expect(() => breakEvenProbabilityUnderQ({ ...base, optionType: 'call', premium: -1 })).toThrow(
       /premium/,
     );
     expect(() =>
       // @ts-expect-error deliberately passing a value the type system forbids
-      probabilityOfProfitUnderQ({ ...base, optionType: 'digital', premium: 1 }),
+      breakEvenProbabilityUnderQ({ ...base, optionType: 'digital', premium: 1 }),
     ).toThrow(InvalidInputError);
   });
 });

@@ -12,6 +12,17 @@
  *
  * All results are in the units of the input. Returns in give a fraction out; multiply by the
  * position value for a currency amount.
+ *
+ * **THE HORIZON IS THE PERIOD OF YOUR RETURNS, AND IT IS NEVER STATED IN THE RESULT.** Daily
+ * returns give a one-day VaR; monthly returns give a one-month VaR. The number carries no label
+ * saying which, so a figure computed from daily data and then reported as "our VaR" is off by
+ * whatever scaling the reader assumed. Nothing in this library can detect that, because a series
+ * of numbers does not say how far apart they are. Say the horizon wherever the figure is used.
+ *
+ * Scaling one horizon to another is not a division: under the usual independence assumption VaR
+ * scales with the square root of time, so a one-day figure is multiplied by sqrt(10) for ten
+ * days. That assumption is itself questionable in stressed markets, which is why no such helper
+ * is provided here — it would put a convenient number behind an inconvenient assumption.
  */
 
 import { inverseNormalCdf } from '../utils/normal.js';

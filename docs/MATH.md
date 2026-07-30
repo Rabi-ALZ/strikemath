@@ -36,10 +36,33 @@ money.
 return is, which this library does not model and cannot infer from option prices.
 
 **A Q-probability is not a forecast.** `N(d2)` is a price expressed in probability units — the
-market's risk-adjusted valuation of a binary payoff, not a prediction of what will happen. The
-two coincide only if the market is risk-neutral, which it is not. Functions returning
-Q-probabilities say so in their name and in their documentation, and are never presented as
-estimates of real-world likelihood.
+market's risk-adjusted valuation of a binary payoff, not a prediction of what will happen. The two
+measures coincide only where the market price of risk is zero, which in equities it is not.
+Functions returning Q-probabilities say so in their name and in their documentation, and are never
+presented as estimates of real-world likelihood.
+
+**What this library cannot tell you.** If your question is _how often will this actually finish in
+the money_, no function here answers it, and none can. That answer needs a model of the real-world
+drift, which means a view on expected returns — this library has none and takes none. Everything
+it computes is derived from prices, and prices are expectations under Q.
+
+The gap between the two is not noise, and not small. Equity index puts have historically traded
+well above what their realised frequency of finishing in the money would justify, because
+investors pay a premium for protection; this is the variance risk premium, and it is one of the
+more robust findings in empirical asset pricing.[^vrp] So `probabilityItmUnderQ` on an index put
+**systematically overstates** how often it finishes in the money. The direction of the bias
+depends on the instrument and the sign of the premium, which is exactly why the library will not
+present these numbers as likelihoods.
+
+[^vrp]:
+    This is an empirical claim about markets rather than a mathematical one, and it is stated
+    here as context, not as something this library verifies. See the literature on the variance risk
+    premium — Bakshi & Kapadia (2003), Carr & Wu (2009), Bollerslev, Tauchen & Zhou (2009) — for the
+    evidence and its limits.
+
+Where `N(d1)` appears it is also a probability, but under a different measure again — the one in
+which the underlying itself is the numéraire — which is why it is delta rather than a likelihood
+of anything. The library does not expose it as a probability.
 
 ---
 
@@ -276,19 +299,30 @@ This was documented for a while as a set of conventions, and that was wrong. Not
 chosen. At the kink `spotTerm = strikeTerm`, which forces `d1 = sigma sqrt(T) / 2`, so `d1 -> 0`,
 `N(d1) -> 1/2` and `phi(d1) -> phi(0)`. Every boundary value follows from that.
 
-Measured at the kink, `S = K = 100`, `r = q = 0.04`, `T = 1`, as `sigma` tends to 0:
+Measured at the kink, `S = K = 100`, `r = q = 0.04`, `T = 1`. The last row is what the
+boundary branch returns; the rows above it are the analytic branch converging on it.
 
-| Greek   | Limit from inside                                            | Reported          |                     |
-| ------- | ------------------------------------------------------------ | ----------------- | ------------------- |
-| `delta` | 0.4803947187                                                 | 0.4803947196      | the limit           |
-| `vega`  | 38.32995298410409                                            | 38.32995298410414 | the limit           |
-| `rho`   | 48.0394700411                                                | 48.0394719576     | the limit           |
-| `theta` | → 0, linearly in sigma: −1.76e-2 at 1e-3, −1.76e-11 at 1e-12 | 0                 | the limit           |
-| `gamma` | → ∞ as 1/sigma: 3.8e0 at 1e-3, 3.8e9 at 1e-12                | 0                 | **no finite limit** |
+| `sigma` | `delta`                | `vega`             | `rho`              | `theta`    | `gamma`  |
+| ------- | ---------------------- | ------------------ | ------------------ | ---------- | -------- |
+| 1e-3    | 0.4805863693330966     | 38.32994819286     | 48.02030698192     | -1.763e-2  | 3.833e+0 |
+| 1e-6    | 0.4803949112259266     | 38.32995298410     | 48.03945279264     | -1.763e-5  | 3.833e+3 |
+| 1e-9    | 0.4803947197678113     | 38.32995298410     | 48.03947193845     | -1.763e-8  | 3.833e+6 |
+| 1e-12   | 0.4803947195763532     | 38.32995298410     | 48.03947195760     | -1.763e-11 | 3.833e+9 |
+| **0**   | **0.4803947195761616** | **38.32995298410** | **48.03947195762** | **0**      | **0**    |
 
-And approaching the other kink, `S = K`, `r = q = 0`, from `T > 0`, delta converges on 0.5 rather
-than being placed there: 0.5039893563146316 at `T = 1e-2`, 0.5000039894228039 at `T = 1e-8`,
-0.5000000398942281 at `T = 1e-12`.
+Read the columns downwards. `delta`, `vega` and `rho` converge on the value the boundary branch
+reports. `theta` converges on 0 linearly in `sigma` — three decades of `sigma` buy three decades
+of `theta` — so 0 is its limit too. `gamma` is the exception: it grows as `1/sigma` without
+bound, so there is no finite value to report and 0 is what the boundary returns instead.
+
+A single probe would not have shown this. At `sigma = 1e-9` delta reads 0.4803947197678113, which
+differs from the reported 0.4803947195761616 in the tenth digit — not because the library is wrong
+there, but because the probe is still a finite distance from the limit. Convergence is the claim,
+and only a sequence demonstrates it.
+
+The same holds approaching the other kink, `S = K`, `r = q = 0`, from `T > 0`: delta converges on
+0.5 rather than being placed there — 0.5039893563146316 at `T = 1e-2`, 0.5000039894228039 at
+`T = 1e-8`, 0.5000000398942281 at `T = 1e-12`.
 
 **Why state it as a rule rather than as five values.** A rule is predictive. Vanna, charm, volga
 and speed all have their boundary behaviour already decided by it, and so does anything else added
@@ -375,7 +409,21 @@ infinity.
 
 ## 8. Risk measures
 
-### 8.1 Sign convention
+### 8.1 Sign convention, and the horizon
+
+**The horizon is the period of your returns, and the result does not carry it.** Daily returns
+give a one-day VaR; monthly returns give a one-month VaR. A series of numbers does not say how far
+apart they are, so nothing in this library can detect a mismatch, and a figure computed from daily
+data and reported as "our VaR" is wrong by whatever scaling the reader assumed. State the horizon
+wherever the figure appears.
+
+Converting between horizons is not division. Under the usual independence assumption VaR scales
+with the square root of time — a one-day figure times sqrt(10) for ten days — and that assumption
+is least reliable exactly in the stressed markets where the number is being consulted. No helper
+for it is provided, deliberately: it would put a convenient number behind an inconvenient
+assumption.
+
+#### Sign convention
 
 **Losses are positive numbers.** A VaR of 0.032 is a 3.2% loss. Return series passed in keep the
 opposite convention — a return of -0.032 is a 3.2% loss — because that is how returns are
@@ -469,10 +517,25 @@ accuracy statements above are only claimed inside it.
 
 The domain above governs the analytic functions. The binomial tree carries one more constraint,
 because its highest terminal node is `S u^n = e^(ln S + sigma sqrt(T n))`. The tree fits in a
-double only while
+double only while that exponent stays inside the range of a double.
+
+**Three constants appear below and they are not the same number.** They are named here once so
+nothing later reads as a contradiction:
+
+|                               | Value            | What it is                                                        |
+| ----------------------------- | ---------------- | ----------------------------------------------------------------- |
+| `ln(Number.MAX_VALUE)`        | 709.782712893384 | the true ceiling; beyond it a double is `Infinity`                |
+| `MAX_REPRESENTABLE_LOG_PRICE` | **709**          | what the code tests against, a deliberate 0.78 of margin          |
+| headroom                      | `709 - ln S`     | what is left for `sigma sqrt(T n)` once the spot is accounted for |
+
+The margin costs a sliver of the representable range — a call whose top node lands between
+`e^709` and `e^709.78` is refused although it would have been finite — and buys not having to
+reason about the last ulp of the exponent. Everything below uses 709.
+
+The constraint is therefore
 
 ```
-ln S + sigma sqrt(T n) <= ln(Number.MAX_VALUE) ~ 709.78
+ln S + sigma sqrt(T n) <= 709
 ```
 
 which couples `steps` to volatility:
@@ -511,8 +574,9 @@ constraint entirely. Neither is implemented, and the reason is priority, not imp
 would need its own verification against the values the current tree already produces, and the
 binding region is narrow.
 
-How narrow is worth stating precisely rather than waving at. The constraint needs
-`sigma sqrt(T n) > 704`, so at `sigma = 2` — 200% volatility, which single names do reach in a
+How narrow is worth stating precisely rather than waving at. The constraint binds when
+`sigma sqrt(T n)` exceeds the headroom `709 - ln S`, which for `S = 100` is 704.4. So at
+`sigma = 2` — 200% volatility, which single names do reach in a
 crisis — and `T = 1` it never binds inside the 20 000 step cap. At `sigma = 2` and `T = 10` it
 binds from about 12 400 steps. So the region is exotic but not empty, and the honest summary is
 that a long-dated American call at extreme volatility currently has no fallback: European

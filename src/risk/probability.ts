@@ -46,7 +46,7 @@ export interface ItmInputs extends OptionInputs {
 }
 
 /** {@link ItmInputs} plus the premium paid, for a break-even calculation. */
-export interface ProfitInputs extends ItmInputs {
+export interface BreakEvenInputs extends ItmInputs {
   /** Premium paid per contract, in the same units as `spot`. Must not be negative. */
   readonly premium: number;
 }
@@ -149,6 +149,14 @@ export function probabilityItmUnderQ(inputs: ItmInputs): number {
 /**
  * Q-probability that a **long** option position finishes beyond its break-even price.
  *
+ * **On the name.** Other tools call this "probability of profit", often abbreviated POP. This
+ * library deliberately does not, because that phrase makes a promise the number cannot keep. What
+ * is computed is a risk-neutral probability: a price expressed in probability units. It is not an
+ * estimate of how often the trade will make money, and the gap between the two is systematic
+ * rather than noisy — see docs/MATH.md §2. A name has to survive being read out of context, in an
+ * autocomplete list, in a UI label, in a screenshot. "Break-even" describes what is measured;
+ * "profit" describes what the reader hopes it means.
+ *
  * The premium is carried forward to expiry at the risk-free rate, so break-even is
  * `K + premium e^(rT)` for a call and `K - premium e^(rT)` for a put. That convention treats the
  * premium as financed, which is the internally consistent choice in a model where everything else
@@ -164,7 +172,7 @@ export function probabilityItmUnderQ(inputs: ItmInputs): number {
  *          particular not the probability that the trade makes money in the real world.
  * @throws InvalidInputError if an input is out of range or `premium` is negative.
  */
-export function probabilityOfProfitUnderQ(inputs: ProfitInputs): number {
+export function breakEvenProbabilityUnderQ(inputs: BreakEvenInputs): number {
   assertNonNegative('premium', inputs.premium);
 
   if (inputs.optionType !== 'call' && inputs.optionType !== 'put') {

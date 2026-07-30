@@ -77,9 +77,9 @@ export {
   probabilityAboveUnderQ,
   probabilityBelowUnderQ,
   probabilityItmUnderQ,
-  probabilityOfProfitUnderQ,
+  breakEvenProbabilityUnderQ,
 } from './risk/probability.js';
-export type { ItmInputs, LevelInputs, ProfitInputs } from './risk/probability.js';
+export type { ItmInputs, LevelInputs, BreakEvenInputs } from './risk/probability.js';
 
 export { historicalVar, parametricVar } from './risk/var.js';
 export type { HistoricalVarInputs, ParametricVarInputs } from './risk/var.js';

@@ -13,7 +13,7 @@ import {
   parametricCvar,
   parametricVar,
   probabilityItmUnderQ,
-  probabilityOfProfitUnderQ,
+  breakEvenProbabilityUnderQ,
 } from '../src/index.js';
 
 const contract = {
@@ -35,7 +35,7 @@ console.log(
 );
 console.log(
   '  P(beyond break-even)    ',
-  probabilityOfProfitUnderQ({ ...contract, optionType: 'call', premium }),
+  breakEvenProbabilityUnderQ({ ...contract, optionType: 'call', premium }),
 );
 console.log('  break-even price        ', contract.strike + premium * Math.exp(0.05 * 0.25));
 
