@@ -5,12 +5,10 @@ import {
   bsPut,
   callGreeks,
   crrPrice,
-  d1d2,
   delta,
   fractionalKelly,
   gamma,
   historicalCvar,
-  historicalLossQuantile,
   historicalVar,
   impliedVolatility,
   inverseNormalCdf,
@@ -33,6 +31,7 @@ import {
   vega,
   vegaPerPercentagePoint,
 } from '../src/index.js';
+import { d1d2 } from '../src/pricing/blackScholes.js';
 import type { OptionInputs } from '../src/index.js';
 
 /**
@@ -124,6 +123,8 @@ describe('no public function returns -0', () => {
 
       outcomes.push(...outcomesOf(`bsCall ${tag}`, () => bsCall(inputs)));
       outcomes.push(...outcomesOf(`bsPut ${tag}`, () => bsPut(inputs)));
+      // d1d2 is not part of the public surface — see the note in src/index.ts — but it feeds
+      // every Greek, so a -0 escaping from it would surface downstream.
       outcomes.push(...outcomesOf(`d1d2 ${tag}`, () => d1d2(inputs)));
 
       for (const optionType of ['call', 'put'] as const) {
@@ -248,11 +249,6 @@ describe('no public function returns -0', () => {
         );
         outcomes.push(
           ...outcomesOf('historicalCvar', () => historicalCvar({ returns, confidenceLevel })),
-        );
-        outcomes.push(
-          ...outcomesOf('historicalLossQuantile', () =>
-            historicalLossQuantile(returns, confidenceLevel),
-          ),
         );
       }
     }

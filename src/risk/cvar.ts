@@ -17,7 +17,7 @@
 
 import { normalPdf, inverseNormalCdf } from '../utils/normal.js';
 import { InvalidInputError, assertFinite, withoutNegativeZero } from '../utils/validate.js';
-import { assertConfidenceLevel, quantile, toLosses } from './var.js';
+import { assertConfidenceLevel, toLosses } from './var.js';
 import type { HistoricalVarInputs, ParametricVarInputs } from './var.js';
 
 /** Inputs to {@link historicalCvar}. Identical to the historical VaR inputs. */
@@ -75,20 +75,5 @@ export function parametricCvar(inputs: ParametricCvarInputs): number {
   const z = inverseNormalCdf(confidenceLevel);
   return withoutNegativeZero(
     -inputs.mean + (inputs.standardDeviation * normalPdf(z)) / (1 - confidenceLevel),
-  );
-}
-
-/**
- * The empirical quantile used by the historical estimators, exposed so a caller can reproduce the
- * VaR threshold that {@link historicalCvar} averages beyond.
- */
-export function historicalLossQuantile(
-  returns: readonly number[],
-  confidenceLevel: number,
-): number {
-  const level = assertConfidenceLevel(confidenceLevel);
-  return quantile(
-    toLosses(returns).sort((a, b) => a - b),
-    level,
   );
 }

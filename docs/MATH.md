@@ -393,7 +393,31 @@ A deep out-of-the-money weekly can have a vega around 3e-5, so even an exactly m
 sigma only to about 3e-6. Where vega has collapsed entirely the price carries no information
 about volatility at all, and no solver can recover it.
 
-### 7.3 Arbitrage bounds
+### 7.3 The search bracket is fixed, and why
+
+`priceTolerance` and `maxIterations` are parameters. The bracket `[1e-6, 5]` is not, and the
+asymmetry is deliberate.
+
+**The bounds are economic, not numerical.** It would be tidy to say the floor sits where the price
+stops differing from intrinsic. Measured, that is false by ten orders of magnitude: for a
+forward-at-the-money one-year contract on a spot of 100, the price exceeds intrinsic by 3.8e-5 at
+`sigma = 1e-6`, by 3.8e-13 at `sigma = 1e-14`, and only becomes indistinguishable at
+`sigma = 1e-18`. The floor is where volatility stops being a market quantity — 0.0001% annualised
+— not where the arithmetic gives out. The ceiling is the same judgement at the other end: 500%
+annualised is past any traded market.
+
+**A caller could not choose better.** Selecting a bracket requires knowing how the Newton step and
+the bisection fallback interact here, and where convergence degrades. A parameter that can
+realistically only be set wrong is a trap with documentation attached.
+
+**The bounds are load-bearing.** The prices at both ends decide whether an input is reported as a
+`ConvergenceError` or solved, and both appear in the error text. Widening the bracket silently
+changes which inputs are answerable.
+
+If a real contract needs a different range, that is a feature request with a case attached — and
+the case will say what the range should be. The same reasoning as log space in §9.1.
+
+### 7.4 Arbitrage bounds
 
 Checked before any iteration, because a price outside them has no implied volatility at all:
 

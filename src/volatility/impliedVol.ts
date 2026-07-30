@@ -18,10 +18,35 @@ import { vega as blackScholesVega } from '../greeks/analytical.js';
 import type { OptionInputs, OptionType } from '../utils/types.js';
 import { InvalidInputError, assertFinite, assertPositive } from '../utils/validate.js';
 
-/** Lower end of the volatility search bracket. */
+/**
+ * The volatility search bracket, and why it is fixed rather than a parameter.
+ *
+ * `priceTolerance` and `maxIterations` can be overridden; this cannot. The asymmetry is
+ * deliberate, and it is worth saying why rather than leaving it to look like an oversight.
+ *
+ * **The bounds are economic, not numerical.** A common justification for a floor around 1e-6 is
+ * that the price stops being distinguishable from intrinsic below it. Measured, that is simply
+ * false: for a forward-at-the-money one-year contract on a spot of 100 the price still exceeds
+ * intrinsic by 3.8e-13 at `sigma = 1e-14`, and only collapses at `sigma = 1e-18` — ten orders of
+ * magnitude below the floor. The floor is there because 0.0001% annualised volatility is not a
+ * market, not because the arithmetic gives out.
+ *
+ * **A caller could not choose better.** Picking a bracket means knowing how the Newton step and
+ * the bisection fallback interact in this implementation and where convergence degrades. A
+ * parameter that can realistically only be set wrong is a trap with good documentation attached.
+ *
+ * **The bounds are load-bearing elsewhere.** The prices at both ends decide whether an input is
+ * reported as a `ConvergenceError` or solved, and both appear in the error messages. Widening the
+ * bracket silently changes which inputs are answerable — it is not an isolated knob.
+ *
+ * If a real contract ever needs a different range, that is a feature request with a concrete case
+ * attached, and the case will say what the right range is. Guessing now would be worse.
+ */
+
+/** Lower end of the volatility search bracket: 0.0001% annualised. */
 export const MIN_IMPLIED_VOLATILITY = 1e-6;
 
-/** Upper end of the volatility search bracket, 500% annualised. */
+/** Upper end of the volatility search bracket: 500% annualised. */
 export const MAX_IMPLIED_VOLATILITY = 5;
 
 /** Default cap on iterations before the solver gives up and reports failure. */

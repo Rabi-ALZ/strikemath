@@ -28,8 +28,14 @@ export { inverseNormalCdf, normalCdf, normalPdf } from './utils/normal.js';
 
 // ---------------------------------------------------------------------------- pricing
 
-export { bsCall, bsPrice, bsPut, d1d2 } from './pricing/blackScholes.js';
-export type { BlackScholesD1D2, BlackScholesPriceInputs } from './pricing/blackScholes.js';
+// `d1d2` is deliberately NOT exported. It is the one function that throws on an input that is
+// perfectly reasonable to ask about — timeToExpiry of 0 — where the throw means 'the question is
+// undefined' rather than 'your input was invalid'. Those two are indistinguishable at the call
+// site, and that ambiguity would propagate into every consumer's error handling. The pricing
+// functions answer the same question without it. An export can be added later without breaking
+// anyone; it cannot be removed later without breaking everyone.
+export { bsCall, bsPrice, bsPut } from './pricing/blackScholes.js';
+export type { BlackScholesPriceInputs } from './pricing/blackScholes.js';
 
 export { crrPrice, DEFAULT_BINOMIAL_STEPS } from './pricing/binomial.js';
 export type { BinomialInputs, ExerciseStyle } from './pricing/binomial.js';
@@ -84,7 +90,7 @@ export type { ItmInputs, LevelInputs, BreakEvenInputs } from './risk/probability
 export { historicalVar, parametricVar } from './risk/var.js';
 export type { HistoricalVarInputs, ParametricVarInputs } from './risk/var.js';
 
-export { historicalCvar, historicalLossQuantile, parametricCvar } from './risk/cvar.js';
+export { historicalCvar, parametricCvar } from './risk/cvar.js';
 export type { HistoricalCvarInputs, ParametricCvarInputs } from './risk/cvar.js';
 
 export { fractionalKelly, kellyFraction } from './risk/kelly.js';

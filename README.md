@@ -117,16 +117,78 @@ be misread.
 
 ## What is in it
 
-| Module       | Exports                                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------------------- |
-| Pricing      | `bsCall`, `bsPut`, `bsPrice`, `d1d2`, `crrPrice` (European and American)                                 |
-| Greeks       | `callGreeks`, `putGreeks`, `optionGreeks`, `delta`, `gamma`, `vega`, `theta`, `rho`                      |
-| Scaling      | `vegaPerPercentagePoint`, `thetaPerCalendarDay`, `thetaPerTradingDay`, `rhoPerPercentagePoint`           |
-| Volatility   | `impliedVolatility`                                                                                      |
-| Distribution | `normalPdf`, `normalCdf`, `inverseNormalCdf`                                                             |
-| Risk         | `probabilityItmUnderQ`, `breakEvenProbabilityUnderQ`, `probabilityAboveUnderQ`, `probabilityBelowUnderQ` |
-|              | `historicalVar`, `parametricVar`, `historicalCvar`, `parametricCvar`                                     |
-|              | `kellyFraction`, `fractionalKelly`                                                                       |
+### The distribution, verified against exact arithmetic
+
+```ts
+normalPdf(x);
+normalCdf(x);
+inverseNormalCdf(p);
+```
+
+The standard normal, checked against 40-digit BigInt ground truth rather than against a published
+table. Worst measured relative error **1.2e-14** below |z| = 3 and **2.4e-16** above it, with no
+tail cutoff — `normalCdf(-37)` returns 5.7e-300, not 0.
+
+If you take one thing from this library, take this one. It is a concrete, checkable promise, where
+"correct options mathematics" is a claim everyone makes.
+
+### Pricing
+
+```ts
+bsCall(inputs);
+bsPut(inputs);
+bsPrice({ ...inputs, optionType });
+crrPrice({ ...inputs, optionType, exerciseStyle, steps }); // European and American
+```
+
+### Greeks — individually, or all five at once
+
+Two access patterns, not redundancy. Ask for one number when you want one; ask for the bundle when
+you want all five without recomputing `d1` five times.
+
+```ts
+delta({ ...inputs, optionType });
+gamma(inputs);
+vega(inputs);
+theta({ ...inputs, optionType });
+rho({ ...inputs, optionType });
+
+callGreeks(inputs);
+putGreeks(inputs);
+optionGreeks({ ...inputs, optionType });
+```
+
+Unit conversion, and the only place scaling ever happens:
+
+```ts
+vegaPerPercentagePoint(v);
+thetaPerCalendarDay(t);
+thetaPerTradingDay(t);
+rhoPerPercentagePoint(r);
+```
+
+### Implied volatility
+
+```ts
+impliedVolatility({ ...inputs, optionPrice, optionType });
+```
+
+### Risk
+
+```ts
+probabilityItmUnderQ({ ...inputs, optionType });
+breakEvenProbabilityUnderQ({ ...inputs, optionType, premium });
+probabilityAboveUnderQ({ ...inputs, level });
+probabilityBelowUnderQ({ ...inputs, level });
+
+historicalVar({ returns, confidenceLevel });
+parametricVar({ mean, standardDeviation, confidenceLevel });
+historicalCvar({ returns, confidenceLevel });
+parametricCvar({ mean, standardDeviation, confidenceLevel });
+
+kellyFraction({ winProbability, winPayoff });
+fractionalKelly(fullKelly, 0.5);
+```
 
 Named exports only — no default export. ESM and CJS builds, with TypeScript declarations.
 

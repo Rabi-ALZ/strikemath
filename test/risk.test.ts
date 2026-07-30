@@ -6,7 +6,7 @@ import {
   breakEvenProbabilityUnderQ,
 } from '../src/risk/probability.js';
 import { historicalVar, parametricVar } from '../src/risk/var.js';
-import { historicalCvar, historicalLossQuantile, parametricCvar } from '../src/risk/cvar.js';
+import { historicalCvar, parametricCvar } from '../src/risk/cvar.js';
 import { fractionalKelly, kellyFraction } from '../src/risk/kelly.js';
 import { bsCall, bsPut, d1d2 } from '../src/pricing/blackScholes.js';
 import { inverseNormalCdf, normalCdf } from '../src/utils/normal.js';
@@ -287,13 +287,6 @@ describe('Conditional Value at Risk', () => {
     expect(parametricCvar({ mean, standardDeviation, confidenceLevel })).toBeCloseTo(
       -mean + (standardDeviation * density) / (1 - confidenceLevel),
       14,
-    );
-  });
-
-  it('exposes the loss quantile it averages beyond', () => {
-    expect(historicalLossQuantile(returns, 0.95)).toBeCloseTo(
-      historicalVar({ returns, confidenceLevel: 0.95 }),
-      15,
     );
   });
 
