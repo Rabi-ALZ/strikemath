@@ -262,6 +262,66 @@ why §3.3 matters and why a parity failure never points at the CDF.
 
 ---
 
+### 6.2 The boundary rule
+
+Where the contract has no dispersion left — `sigma sqrt(T) = 0` — the closed forms divide by
+zero and the Greeks have to come from somewhere else. **One rule decides all of them:**
+
+> **Report the limit of the analytic formula approached from inside the domain. Where that limit
+> does not exist finitely, report 0.**
+
+Gamma at the kink is the only place the second clause applies.
+
+This was documented for a while as a set of conventions, and that was wrong. Nothing here is
+chosen. At the kink `spotTerm = strikeTerm`, which forces `d1 = sigma sqrt(T) / 2`, so `d1 -> 0`,
+`N(d1) -> 1/2` and `phi(d1) -> phi(0)`. Every boundary value follows from that.
+
+Measured at the kink, `S = K = 100`, `r = q = 0.04`, `T = 1`, as `sigma` tends to 0:
+
+| Greek   | Limit from inside                                            | Reported          |                     |
+| ------- | ------------------------------------------------------------ | ----------------- | ------------------- |
+| `delta` | 0.4803947187                                                 | 0.4803947196      | the limit           |
+| `vega`  | 38.32995298410409                                            | 38.32995298410414 | the limit           |
+| `rho`   | 48.0394700411                                                | 48.0394719576     | the limit           |
+| `theta` | → 0, linearly in sigma: −1.76e-2 at 1e-3, −1.76e-11 at 1e-12 | 0                 | the limit           |
+| `gamma` | → ∞ as 1/sigma: 3.8e0 at 1e-3, 3.8e9 at 1e-12                | 0                 | **no finite limit** |
+
+And approaching the other kink, `S = K`, `r = q = 0`, from `T > 0`, delta converges on 0.5 rather
+than being placed there: 0.5039893563146316 at `T = 1e-2`, 0.5000039894228039 at `T = 1e-8`,
+0.5000000398942281 at `T = 1e-12`.
+
+**Why state it as a rule rather than as five values.** A rule is predictive. Vanna, charm, volga
+and speed all have their boundary behaviour already decided by it, and so does anything else added
+later — take the limit, and report 0 only if it diverges. Five separately recorded conventions
+would have decided nothing, and would have left the next author to guess.
+
+The rule also has teeth as a test: the boundary branch and the analytic branch must agree in the
+limit, which means a defect in either shows up as a discontinuity in the library's own output.
+That is exactly how vega was found to be wrong — it returned 39.894 at `sigma = 5e-324` and 0 at
+`sigma = 0`.
+
+### 6.3 The Black-Scholes PDE, as a check on all four at once
+
+The price and its Greeks satisfy
+
+```
+theta + (1/2) sigma^2 S^2 gamma + (r - q) S delta - r V = 0
+```
+
+This is the strongest structural identity in the library, because it ties `theta`, `gamma`,
+`delta` and the price into a single equation — a defect in any one of them breaks it, and it is
+not satisfiable by four values that are individually plausible.
+
+It is also what settles the unit convention, and settles it mechanically rather than by
+assertion. **Theta per year is the unit in which this identity holds without a conversion
+factor.** Measured residual across the documented domain: worst **1.0e-14** relative. With theta
+expressed per day instead, the same residual is **5.08**, **4.55** and **1.10** at three ordinary
+contracts — the identity simply fails. The convention is therefore enforced by
+`test/greeks.test.ts`, not merely promised here: anyone changing theta's unit breaks the PDE test
+by a factor of 365.
+
+---
+
 ## 7. Implied volatility
 
 The volatility that reproduces an observed price. There is no closed form, so it is found
@@ -445,9 +505,19 @@ Two properties of this limit are worth stating plainly. It is reached by **raisi
 the same contract prices correctly at a coarser tree — and it applies only to the tree: `bsPrice`
 has no such limit and prices those European contracts without difficulty.
 
-Working in log space, or pruning the branches whose probability is negligible, would lift the
-constraint. Neither is implemented: both would need their own verification, and 160% volatility
-with a five-figure step count is not a real use case. If it becomes one, that is the fix.
+**A real alternative exists, and it was deprioritised rather than ruled out.** Carrying node
+prices in log space, or pruning the branches whose probability is negligible, would lift the
+constraint entirely. Neither is implemented, and the reason is priority, not impossibility: each
+would need its own verification against the values the current tree already produces, and the
+binding region is narrow.
+
+How narrow is worth stating precisely rather than waving at. The constraint needs
+`sigma sqrt(T n) > 704`, so at `sigma = 2` — 200% volatility, which single names do reach in a
+crisis — and `T = 1` it never binds inside the 20 000 step cap. At `sigma = 2` and `T = 10` it
+binds from about 12 400 steps. So the region is exotic but not empty, and the honest summary is
+that a long-dated American call at extreme volatility currently has no fallback: European
+contracts have `bsPrice`, American ones do not. If that becomes a real request, log space is the
+fix and this paragraph is the ticket.
 
 ### 9.2 The resolution floor
 

@@ -317,3 +317,71 @@ It also says something about coverage. The suite stood at 98.65% statements and 
 when the first five defects were found, and every one of them was in a covered line. Coverage
 measures execution, not correctness. It earned its keep exactly once, on `maxRepresentableSteps`,
 where an uncovered branch was a real defect in new code — worth running, worth not trusting.
+
+---
+
+## 2026-07-30 — The boundary values are limits, not conventions; this supersedes both earlier entries
+
+Two earlier entries called the boundary Greeks conventions: the first said delta at the kink is
+"the midpoint of the subgradient... the conventional choice", the second corrected vega but left
+the framing intact. **Both were wrong about what these numbers are**, and the framing mattered
+more than either error.
+
+Measured, approaching the kink from inside the domain:
+
+```
+delta at S = K, r = q = 0, as T -> 0+       delta at the forward, r = q = 0.05, as sigma -> 0+
+  T=1        0.539827837277029                 sigma=0.5     0.5695070736243045
+  T=1e-2     0.5039893563146316                sigma=1e-3    0.47580445506034863
+  T=1e-8     0.5000039894228039                sigma=1e-8    0.4756147141477853
+  T=1e-12    0.5000000398942281                sigma=1e-20   0.475614712250357
+  T=0        0.5                               sigma=0       0.475614712250357
+```
+
+The right column converges on `0.5 e^(-0.05) = 0.475614712250357` and the boundary branch returns
+exactly that, bit for bit. Nothing is being chosen. At the kink `spotTerm = strikeTerm` forces
+`d1 = sigma sqrt(T) / 2 -> 0`, hence `N(d1) -> 1/2`.
+
+**The rule, which replaces five separately recorded conventions:**
+
+> Report the limit of the analytic formula approached from inside the domain. Where that limit
+> does not exist finitely, report 0.
+
+Gamma at the kink is the only place the second clause applies — measured, it diverges as `1/sigma`
+(3.8e0 at `sigma = 1e-3`, 3.8e9 at `sigma = 1e-12`), while theta converges to 0 linearly
+(−1.76e-2 to −1.76e-11 over the same range) and delta, vega and rho converge to their reported
+values.
+
+**Why this is worth an entry of its own.** A list of conventions decides nothing about the next
+case; a rule decides all of them. Vanna, charm, volga and speed already have their boundary
+behaviour determined. And the rule is enforceable, which a convention is not: `boundaryGreeks` and
+the analytic branch must agree in the limit, so a defect in either shows up as a discontinuity in
+the library's own output. That is precisely how vega was caught. The property test in
+`blackScholes.property.test.ts` now checks it over the whole domain.
+
+The full statement lives in `docs/MATH.md` §6.2 and is not restated elsewhere. Five copies of a
+convention are how the previous version drifted.
+
+---
+
+## 2026-07-30 — The Black-Scholes PDE, as a machine-enforced check on the theta convention
+
+```
+theta + (1/2) sigma^2 S^2 gamma + (r - q) S delta - r V = 0
+```
+
+Now tested, deterministically and as a property over the documented domain. Worst relative
+residual measured: **1.0e-14**.
+
+Two things this buys that nothing else in the suite did.
+
+It is the first check that constrains `theta`, `gamma`, `delta` and the price **simultaneously**.
+Every other Greek test checks one output at a time — against a finite difference, against Hull,
+against its own sign convention — and four individually plausible values can all be wrong
+together. This identity is not satisfiable by accident.
+
+And it turns the unit convention from a promise into an invariant. Per-year is the unit in which
+the identity holds without a conversion factor: with theta expressed per day the same residual is
+5.08, 4.55 and 1.10 at three ordinary contracts. Anyone changing theta's unit now breaks a test by
+a factor of 365 rather than quietly making the documentation wrong. That is the difference between
+a convention that is written down and one that is held in place.

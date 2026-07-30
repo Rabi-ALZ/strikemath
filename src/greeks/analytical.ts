@@ -42,15 +42,31 @@ export interface GreeksInputs extends OptionInputs {
 }
 
 /**
- * Greeks at the boundary, where `timeToExpiry` or `volatility` is exactly 0.
+ * Greeks at the boundary, where the contract has no dispersion left.
  *
- * There is no randomness left in either case, so the payoff is a deterministic function of the
- * discounted forward and the Greeks are its derivatives. Gamma and vega are 0: the true limit of
- * gamma is a Dirac delta concentrated at the strike, which has no finite value to report.
+ * ONE RULE GOVERNS EVERY VALUE HERE:
  *
- * Exactly at the kink the payoff is not differentiable. Delta is reported as the midpoint of the
- * subgradient — 0.5 for a call, -0.5 for a put — which is the conventional choice and is
- * documented rather than hidden.
+ *   **Report the limit of the analytic formula approached from inside the domain. Where that
+ *   limit does not exist finitely, report 0 — and gamma at the kink is the only place that
+ *   happens.**
+ *
+ * None of these are conventions. They were documented as conventions for a while, and that was
+ * simply wrong: measuring the analytic branch as it approaches the boundary shows it converging
+ * on exactly the values below. At the kink `spotTerm = strikeTerm` forces `d1 = sigma sqrt(T) / 2`,
+ * which tends to 0, so `N(d1) -> 0.5` and `phi(d1) -> phi(0)`.
+ *
+ * Measured at the kink, S = K = 100, r = q = 0.04, T = 1, as sigma tends to 0:
+ *
+ * | Greek | limit from inside | reported |
+ * |-------|-------------------|----------|
+ * | delta | 0.4803947187      | 0.4803947196 |
+ * | vega  | 38.32995298410409 | 38.32995298410414 |
+ * | rho   | 48.0394700411     | 48.0394719576 |
+ * | theta | -> 0, linearly in sigma (-1.76e-2 at 1e-3, -1.76e-11 at 1e-12) | 0 |
+ * | gamma | -> infinity as 1/sigma (3.8e0 at 1e-3, 3.8e9 at 1e-12) | 0 — the exception |
+ *
+ * The rule is what makes this predictable: any Greek added later has its boundary behaviour
+ * already determined. See docs/MATH.md §6.2.
  */
 function boundaryGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): Greeks {
   const { timeToExpiry, riskFreeRate, dividendYield } = inputs;
@@ -156,10 +172,10 @@ function rawGreeks(inputs: ResolvedOptionInputs, optionType: OptionType): Greeks
 /**
  * All five Greeks of a European call, in raw units.
  *
- * **At the boundary** — `timeToExpiry` or `volatility` exactly 0 — there is no randomness left,
- * so gamma and vega are 0 and the others are derivatives of the deterministic payoff. Exactly at
- * the strike that payoff has no derivative, and delta is reported as the midpoint of the
- * subgradient: **0.5 for a call, -0.5 for a put**. That is a convention, not a computed value.
+ * **At the boundary** — where `sigma sqrt(T)` is 0 — every value is the limit of the analytic
+ * formula approached from inside the domain, not a convention. At the kink that makes delta
+ * **0.5 for a call and -0.5 for a put**, and vega finite and large rather than 0. Gamma is the
+ * single exception: its limit diverges, so 0 is reported. See docs/MATH.md §6.2.
  *
  * @param inputs - Named option inputs. `dividendYield` defaults to 0.
  * @returns delta per 1.0 spot, gamma per 1.0 spot squared, vega per 1.00 volatility,
@@ -173,10 +189,10 @@ export function callGreeks(inputs: OptionInputs): Greeks {
 /**
  * All five Greeks of a European put, in raw units.
  *
- * **At the boundary** — `timeToExpiry` or `volatility` exactly 0 — there is no randomness left,
- * so gamma and vega are 0 and the others are derivatives of the deterministic payoff. Exactly at
- * the strike that payoff has no derivative, and delta is reported as the midpoint of the
- * subgradient: **-0.5 for a put, 0.5 for a call**. That is a convention, not a computed value.
+ * **At the boundary** — where `sigma sqrt(T)` is 0 — every value is the limit of the analytic
+ * formula approached from inside the domain, not a convention. At the kink that makes delta
+ * **0.5 for a call and -0.5 for a put**, and vega finite and large rather than 0. Gamma is the
+ * single exception: its limit diverges, so 0 is reported. See docs/MATH.md §6.2.
  *
  * @param inputs - Named option inputs. `dividendYield` defaults to 0.
  * @returns delta per 1.0 spot, gamma per 1.0 spot squared, vega per 1.00 volatility,
@@ -190,9 +206,10 @@ export function putGreeks(inputs: OptionInputs): Greeks {
 /**
  * All five Greeks of a European option on either side, in raw units.
  *
- * **At the boundary** — `timeToExpiry` or `volatility` exactly 0 — gamma and vega are 0, and
- * exactly at the strike delta is the midpoint of the subgradient: **0.5 for a call, -0.5 for a
- * put**. That is a convention, not a computed value.
+ * **At the boundary** — where `sigma sqrt(T)` is 0 — every value is the limit of the analytic
+ * formula approached from inside the domain, not a convention. At the kink that makes delta
+ * **0.5 for a call and -0.5 for a put**, and vega finite and large rather than 0. Gamma is the
+ * single exception: its limit diverges, so 0 is reported. See docs/MATH.md §6.2.
  *
  * @param inputs - Named option inputs plus `optionType`.
  * @throws InvalidInputError if any input is out of range or `optionType` is not recognised.
@@ -211,12 +228,16 @@ export function optionGreeks(inputs: GreeksInputs): Greeks {
  *
  * Bounded by `[0, 1]` for a call and `[-1, 0]` for a put.
  *
- * **At the kink.** When `timeToExpiry` or `volatility` is exactly 0 the payoff is piecewise
- * linear, and at `spot === strike` it has no derivative at all — the subgradient there is the
- * whole interval `[0, 1]` for a call and `[-1, 0]` for a put. This returns its **midpoint: 0.5
- * for a call, -0.5 for a put**. It is the conventional choice, and it is a convention rather
- * than a computed value; away from the strike the reported delta is the true one-sided slope,
- * 1 or 0 for a call and -1 or 0 for a put.
+ * **At the kink.** With no dispersion left the payoff is piecewise linear, and at
+ * `spotTerm === strikeTerm` it has no derivative — the subgradient is the whole interval `[0, 1]`
+ * for a call and `[-1, 0]` for a put. The reported **0.5 and -0.5 are not a choice from within
+ * that interval**: they are the limit of the analytic delta approached from inside the domain.
+ * At the kink `d1 = sigma sqrt(T) / 2` tends to 0, so `N(d1)` tends to 0.5. Measured at
+ * S = K = 100, r = q = 0, approaching from `T > 0`: 0.5039893563146316 at T = 1e-2,
+ * 0.5000039894228039 at T = 1e-8, 0.5 at T = 0.
+ *
+ * Away from the strike the reported delta is the true one-sided slope, 1 or 0 for a call and
+ * -1 or 0 for a put. See docs/MATH.md §6.2.
  */
 export function delta(inputs: GreeksInputs): number {
   return optionGreeks(inputs).delta;

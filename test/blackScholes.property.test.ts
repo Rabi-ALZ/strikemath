@@ -174,6 +174,85 @@ describe('no-arbitrage bounds', () => {
   });
 });
 
+describe('the Black-Scholes PDE', () => {
+  test.prop([optionInputs, fc.constantFrom('call' as const, 'put' as const)], runs)(
+    'theta + (1/2) sigma^2 S^2 gamma + (r - q) S delta - r V = 0',
+    (inputs, optionType) => {
+      // The identity that ties four outputs together, checked over the whole domain rather than
+      // at a handful of points. It is also what makes theta's unit machine-enforced: it holds
+      // only with theta per year, so a change to per-day breaks it by a factor of 365.
+      const greeks = optionType === 'call' ? callGreeks(inputs) : putGreeks(inputs);
+      const value = optionType === 'call' ? bsCall(inputs) : bsPut(inputs);
+      const dividendYield = inputs.dividendYield ?? 0;
+
+      const terms = [
+        greeks.theta,
+        0.5 * inputs.volatility ** 2 * inputs.spot ** 2 * greeks.gamma,
+        (inputs.riskFreeRate - dividendYield) * inputs.spot * greeks.delta,
+        -inputs.riskFreeRate * value,
+      ];
+
+      const scale = Math.max(...terms.map(Math.abs), 1);
+      const residual = Math.abs(terms.reduce((total, term) => total + term, 0));
+
+      // Worst relative residual measured across the documented domain: 1.0e-14.
+      expect(residual / scale).toBeLessThan(1e-12);
+    },
+  );
+});
+
+describe('the boundary rule', () => {
+  test.prop([optionInputs, fc.constantFrom('call' as const, 'put' as const)], runs)(
+    'the boundary branch is the limit of the analytic branch',
+    (inputs, optionType) => {
+      // The rule in docs/MATH.md 6.2, enforced rather than promised: every boundary value must be
+      // what the analytic branch converges on, with gamma the sole exception because its limit
+      // diverges. A defect in either branch surfaces here as a discontinuity in the library's own
+      // output — which is exactly how vega was caught returning 0 where the limit is 39.894.
+      const probe = 1e-9;
+
+      // The probe only reveals the limit if it can tell which side of the kink the contract is
+      // on. That needs |ln(spotTerm / strikeTerm)| to dominate sigma sqrt(T): inside that band
+      // the analytic branch is still reporting the kink value while the boundary branch has
+      // already resolved the strict inequality, and the two legitimately differ. A strike one ulp
+      // above the spot is out of the money, its limit is 0, and no probe at 1e-9 can see that.
+      const spotTerm = inputs.spot * Math.exp(-(inputs.dividendYield ?? 0) * inputs.timeToExpiry);
+      const strikeTerm = inputs.strike * Math.exp(-inputs.riskFreeRate * inputs.timeToExpiry);
+      const moneyness = Math.abs(Math.log(spotTerm / strikeTerm));
+      fc.pre(moneyness === 0 || moneyness > 100 * probe * Math.sqrt(inputs.timeToExpiry));
+
+      const atBoundary = { ...inputs, volatility: 0 };
+      const justInside = { ...inputs, volatility: probe };
+
+      const boundary = optionType === 'call' ? callGreeks(atBoundary) : putGreeks(atBoundary);
+      const inside = optionType === 'call' ? callGreeks(justInside) : putGreeks(justInside);
+
+      // Each Greek has its own natural magnitude, and the probe at sigma = 1e-9 is still a
+      // finite distance from the limit — theta, for instance, converges linearly in sigma, so at
+      // S = K = 1 its value there is around 1e-9 while the limit is 0. Judging every Greek
+      // against one absolute floor would either hide a real discontinuity in delta or flag that
+      // convergence in theta. The floor is therefore the Greek's own scale.
+      const naturalScale = {
+        delta: 1,
+        vega: inputs.spot * Math.sqrt(inputs.timeToExpiry),
+        theta: Math.max(inputs.spot, inputs.strike),
+        rho: inputs.strike * inputs.timeToExpiry,
+      } as const;
+
+      for (const greek of ['delta', 'vega', 'theta', 'rho'] as const) {
+        const budget =
+          1e-3 * Math.max(Math.abs(inside[greek]), Math.abs(boundary[greek])) +
+          1e-6 * naturalScale[greek];
+
+        expect(
+          Math.abs(boundary[greek] - inside[greek]),
+          `${greek}: boundary ${boundary[greek]}, limit ${inside[greek]}, budget ${budget.toExponential(2)}`,
+        ).toBeLessThanOrEqual(budget);
+      }
+    },
+  );
+});
+
 describe('numerical hygiene', () => {
   test.prop([optionInputs], runs)(
     'no price or Greek is NaN or Infinity anywhere in the domain',

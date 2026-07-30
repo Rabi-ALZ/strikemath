@@ -10,6 +10,7 @@ import {
   vega,
 } from '../src/greeks/analytical.js';
 import { bsCall, bsPut } from '../src/pricing/blackScholes.js';
+import { thetaPerCalendarDay } from '../src/greeks/scaling.js';
 import { normalPdf } from '../src/utils/normal.js';
 import { InvalidInputError } from '../src/utils/validate.js';
 import type { OptionInputs } from '../src/utils/types.js';
@@ -143,6 +144,78 @@ describe('structural relationships', () => {
     }
   });
 
+  it('satisfies the Black-Scholes PDE, which ties four outputs into one equation', () => {
+    // theta + (1/2) sigma^2 S^2 gamma + (r - q) S delta - r V = 0
+    //
+    // The strongest structural check in the library: it constrains theta, gamma, delta and the
+    // price simultaneously, and is not satisfiable by four values that are individually
+    // plausible. Worst relative residual measured across the whole documented domain: 1.0e-14.
+    for (const inputs of [
+      base,
+      {
+        ...base,
+        spot: 42,
+        strike: 40,
+        timeToExpiry: 0.5,
+        riskFreeRate: 0.1,
+        volatility: 0.2,
+        dividendYield: 0,
+      },
+      {
+        ...base,
+        spot: 130,
+        strike: 90,
+        timeToExpiry: 3,
+        riskFreeRate: -0.01,
+        volatility: 0.8,
+        dividendYield: 0.07,
+      },
+      { ...base, spot: 10_000, strike: 1, timeToExpiry: 10, volatility: 5 },
+      { ...base, spot: 1, strike: 10_000, timeToExpiry: 1 / 365, volatility: 0.001 },
+    ]) {
+      for (const optionType of ['call', 'put'] as const) {
+        const greeks = optionType === 'call' ? callGreeks(inputs) : putGreeks(inputs);
+        const value = optionType === 'call' ? bsCall(inputs) : bsPut(inputs);
+        const yield_ = inputs.dividendYield ?? 0;
+
+        const terms = [
+          greeks.theta,
+          0.5 * inputs.volatility ** 2 * inputs.spot ** 2 * greeks.gamma,
+          (inputs.riskFreeRate - yield_) * inputs.spot * greeks.delta,
+          -inputs.riskFreeRate * value,
+        ];
+
+        // The terms span many orders of magnitude across the domain, so the residual is judged
+        // against the largest of them rather than against an absolute floor.
+        const scale = Math.max(...terms.map(Math.abs), 1);
+        const residual = Math.abs(terms.reduce((total, term) => total + term, 0));
+
+        expect(
+          residual / scale,
+          `${optionType} at S=${inputs.spot} K=${inputs.strike} T=${inputs.timeToExpiry}: ` +
+            `residual ${residual.toExponential(2)} against scale ${scale.toExponential(2)}`,
+        ).toBeLessThan(1e-12);
+      }
+    }
+  });
+
+  it('would fail the PDE if theta were scaled to a per-day unit', () => {
+    // The point of the test above is not only that the Greeks are right. It is that the unit
+    // convention is machine-enforced: theta per year is the unit in which the identity holds
+    // without a conversion factor, and anything else breaks it by a factor of 365.
+    const greeks = callGreeks(base);
+    const value = bsCall(base);
+    const yield_ = base.dividendYield ?? 0;
+
+    const rest =
+      0.5 * base.volatility ** 2 * base.spot ** 2 * greeks.gamma +
+      (base.riskFreeRate - yield_) * base.spot * greeks.delta -
+      base.riskFreeRate * value;
+
+    expect(Math.abs(greeks.theta + rest)).toBeLessThan(1e-10);
+    expect(Math.abs(thetaPerCalendarDay(greeks.theta) + rest)).toBeGreaterThan(1);
+  });
+
   it('gives a call and a put identical gamma and vega', () => {
     for (const spot of [60, 100, 175]) {
       const inputs = { ...base, spot };
@@ -178,8 +251,9 @@ describe('boundary cases', () => {
     expect(putGreeks({ ...atExpiry, spot: 80 }).delta).toBe(-1);
     expect(putGreeks({ ...atExpiry, spot: 120 }).delta).toBe(0);
 
-    // Exactly at the kink the payoff has no derivative; the midpoint of the subgradient is
-    // reported, and this is a documented convention rather than a computed value.
+    // Exactly at the kink the payoff has no derivative, and 0.5 is not a choice from within
+    // the subgradient: it is the limit of the analytic delta approached from inside the domain,
+    // where d1 = sigma sqrt(T) / 2 tends to 0. See the boundary rule in docs/MATH.md 6.2.
     expect(callGreeks({ ...atExpiry, spot: 100 }).delta).toBe(0.5);
     expect(putGreeks({ ...atExpiry, spot: 100 }).delta).toBe(-0.5);
   });

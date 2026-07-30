@@ -50,9 +50,9 @@ const MAX_REPRESENTABLE_LOG_PRICE = 709;
  * n <= ((ln(MAX_VALUE) - ln S) / sigma)^2 / T
  * ```
  *
- * This binds only at high volatility. Across the documented domain — `S, K <= 10 000`,
- * `T <= 10` — it stays above the 20 000 step cap for any `sigma` up to about 1.5, so an ordinary
- * contract never meets it. It is real from roughly `sigma = 1.6` upwards.
+ * This binds only at high volatility, and only for calls. Across the documented domain —
+ * `S, K <= 10 000`, `T <= 10` — it stays above the 20 000 step cap for any `sigma` up to about
+ * 1.5, so an ordinary contract never meets it. It is real from roughly `sigma = 1.6` upwards.
  *
  * Only ever called from the representability guard, which is reached only when `u != d` — so
  * `volatility` and `timeToExpiry` are both non-zero here and need no special case.
@@ -126,15 +126,18 @@ function deterministicValue(
 /**
  * Prices a European or American option on a Cox-Ross-Rubinstein tree.
  *
- * @param inputs - Named option inputs plus `optionType`, `exerciseStyle` and optionally `steps`.
- * @returns The present value of the option.
- * **`crrPrice` carries one constraint the analytic pricers do not.** The highest terminal node is
+ * **A call carries one constraint the analytic pricers do not.** The highest terminal node is
  * `S u^n = e^(ln S + sigma sqrt(T n))`, so `steps` and `volatility` are coupled: the tree only
  * fits in a double while `ln S + sigma sqrt(T n) <= 709`. Across the documented domain this stays
  * above the 20 000 step cap for any volatility up to about 1.5, so an ordinary contract never
  * meets it — but at 160% volatility and above it is real, and it is reached by *raising* `steps`.
- * The error names the largest step count that fits. See docs/MATH.md §9.2.
+ * The error names the largest step count that fits.
  *
+ * A **put** is unaffected and is never refused on these grounds: its payoff at an overflowed node
+ * is `max(K - Infinity, 0) = 0`, which is the correct value there. See docs/MATH.md §9.1.
+ *
+ * @param inputs - Named option inputs plus `optionType`, `exerciseStyle` and optionally `steps`.
+ * @returns The present value of the option.
  * @throws InvalidInputError if an input is out of range, if `steps` is not a positive integer no
  *         greater than 20 000, if the tree's terminal nodes exceed the double range, or if the
  *         tree's risk-neutral probability falls outside `[0, 1]` — which means the up and down
