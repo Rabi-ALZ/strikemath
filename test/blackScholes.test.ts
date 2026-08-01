@@ -227,3 +227,52 @@ describe('numerical hygiene', () => {
     expect(bsPut({ ...base, spot: 10_000, strike: 1 })).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe('no-arbitrage floor', () => {
+  it('never returns a negative price inside the documented domain', () => {
+    // Regression. A European price is non-negative by no-arbitrage, but the analytic branch is a
+    // difference of two products that can both be subnormal, where only a handful of bits survive
+    // the subtraction. Three cases found inside the documented domain, all returning about
+    // -1.1e-320 before the clamp:
+    for (const [inputs, side] of [
+      [{ spot: 5000, strike: 2, timeToExpiry: 5, riskFreeRate: 0.15, volatility: 0.1 }, 'put'],
+      [
+        { spot: 2, strike: 5000, timeToExpiry: 5, riskFreeRate: 0, volatility: 0.1, dividendYield: 0.15 },
+        'call',
+      ],
+      [
+        { spot: 1000, strike: 2, timeToExpiry: 8, riskFreeRate: 0.05, volatility: 0.05, dividendYield: 0.15 },
+        'put',
+      ],
+    ] as const) {
+      const price = side === 'call' ? bsCall(inputs) : bsPut(inputs);
+      expect(price, `${side} at ${JSON.stringify(inputs)}`).toBeGreaterThanOrEqual(0);
+    }
+
+    // And a sweep, because the existing no-arbitrage-bound test has a slack of
+    // 1e-9 * max(1, spotTerm, strikeTerm), which a violation of -1e-320 disappears into entirely.
+    for (const spot of [1, 2, 100, 1000, 5000, 10_000]) {
+      for (const strike of [1, 2, 100, 1000, 5000, 10_000]) {
+        for (const timeToExpiry of [1 / 365, 1, 5, 8, 10]) {
+          for (const riskFreeRate of [-0.02, 0, 0.05, 0.15, 0.25]) {
+            for (const volatility of [0.001, 0.05, 0.1, 1]) {
+              for (const dividendYield of [0, 0.15]) {
+                const inputs = {
+                  spot,
+                  strike,
+                  timeToExpiry,
+                  riskFreeRate,
+                  volatility,
+                  dividendYield,
+                };
+                const label = `S=${spot} K=${strike} T=${timeToExpiry} r=${riskFreeRate} sigma=${volatility} q=${dividendYield}`;
+                expect(bsCall(inputs), `call ${label}`).toBeGreaterThanOrEqual(0);
+                expect(bsPut(inputs), `put ${label}`).toBeGreaterThanOrEqual(0);
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+});

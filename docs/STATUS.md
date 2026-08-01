@@ -10,7 +10,7 @@ every convention. Ten questions, each answered by measuring rather than by readi
 
 ### Verification
 
-- `pnpm test` — **180 tests across 12 files**
+- `pnpm test` — **184 tests across 12 files**
 - `pnpm test:coverage` — **100%** of statements, branches, functions and lines
 - `pnpm typecheck`, `pnpm lint` — clean
 - Runtime dependencies: none
@@ -66,11 +66,36 @@ ratio — the one case where the wrong formula and the right one agree. Three of
 four new checks fired, including mutation testing, which found that `Math.abs(r - q)` could be
 changed to `r + q` and survive the entire suite.
 
-### Named risks
+### The second verifier run
 
-- **The verifier's own findings were fixed after it ran, and have not been reviewed.** This is the
-  same gap that made round two necessary in July: a fix carries the blind spot of the thing it
-  repairs. A further run is the cheapest remaining risk reduction.
+Run again against those fixes, it found nine more — **three defects in behaviour, two of them
+created by the previous fix.** `ceil(x)` corrected the integral-ratio overshoot and introduced an
+undershoot whenever `q > r`, so `crrPrice` advised a step count it then refused; the test written
+with that fix used positive drift, which is exactly where the defect is invisible. The
+`impliedVolatility` collapse branch, having been made to throw, began refusing prices it can
+reproduce exactly, because its collapse criterion was absolute rather than relative — the same
+shape as round two's guard that rejected valid puts.
+
+The third was pre-existing and the most serious of either run: **`bsCall` and `bsPut` returned
+negative prices inside the documented domain**, about 23 calls and 30 puts per 500 000 draws, at
+magnitudes around -1e-320. The no-arbitrage bound test could not see it: its slack is
+`1e-9 * max(1, spotTerm, strikeTerm)`, a tolerance sized for ordinary prices applied to a quantity
+that is not of that scale. Both exits are now clamped and a 7 200-contract sweep asserts it.
+
+### Where this leaves the stopping question
+
+Three rounds, and the shape is stable: each finds fewer defects in the mathematics and more in
+whatever was written last. It does not converge to zero — it converges on the newest layer.
+
+So the stopping rule cannot be "no defects remain". It is that the defects still being found are
+cheaper to fix after publication than to hunt for before it. The last three behavioural defects
+were real, but two lived in an error message and one at a tolerance no caller sets. That is close
+to the line, and where exactly it falls is the open question, not a technical one.
+
+### Named risk
+
+- **This round's fixes are themselves unreviewed**, for the third time running. The pattern is
+  now well enough understood that this is a known and priced risk rather than an oversight.
 
 ### Before the button can be pressed
 

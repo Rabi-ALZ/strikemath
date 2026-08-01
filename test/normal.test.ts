@@ -64,11 +64,11 @@ describe('normalCdf', () => {
     }
   });
 
-  // z for which z*z/2 is NOT exactly representable as a double. Every other tail fixture point is
-  // an integer, a half-integer or a round decimal, and for all of those z*z/2 is exact. That
-  // distinction is not cosmetic: it decides which of the two tests below applies. See
-  // docs/MATH.md §3.4.
-  const ARGUMENT_NOT_EXACT = new Set(['-4.87', '-6.83', '-11.6', '-13.3', '-14.7']);
+  // Points where the rounding of u = z*z/2 floors relative accuracy above 1e-15, verified in
+  // exact arithmetic. This is a stronger condition than "u is inexact": -4.6 and -7.07106781186547
+  // also have inexact u, but |du| there is 7.1e-17 and 3.1e-16, so they clear the strict tolerance
+  // and belong with the group below. See docs/MATH.md §3.4.
+  const DEMONSTRATES_THE_FLOOR = new Set(['-4.28', '-6.83', '-11.6', '-13.3', '-14.7']);
 
   it('keeps relative accuracy in the tail where z*z/2 is exactly representable', () => {
     // |x| > 3 is the deepened continued fraction. This is the assertion that West's published
@@ -77,7 +77,7 @@ describe('normalCdf', () => {
     // The 1e-15 tolerance is real but point-specific, which is why the excluded points get a
     // test of their own rather than a looser tolerance here.
     for (const { x, value } of reference.cdf) {
-      if (Math.abs(Number(x)) <= 3 || ARGUMENT_NOT_EXACT.has(x)) continue;
+      if (Math.abs(Number(x)) <= 3 || DEMONSTRATES_THE_FLOOR.has(x)) continue;
       expectRelative(normalCdf(Number(x)), Number(value), 1e-15);
     }
   });
@@ -91,7 +91,7 @@ describe('normalCdf', () => {
     // Asserting the envelope rather than the observed error keeps this test honest in both
     // directions: a regression to a shallower continued fraction (~1e-9) fails it immediately,
     // and a future double-double argument reduction that removes the floor entirely still passes.
-    for (const x of ARGUMENT_NOT_EXACT) {
+    for (const x of DEMONSTRATES_THE_FLOOR) {
       const entry = reference.cdf.find((candidate) => candidate.x === x);
       expect(entry, `fixture for x = ${x} is missing`).toBeDefined();
 

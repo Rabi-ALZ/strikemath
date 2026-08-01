@@ -27,7 +27,7 @@ import { InvalidInputError, assertFinite, assertPositive } from '../utils/valida
  * **The bounds are economic, not numerical.** A common justification for a floor around 1e-6 is
  * that the price stops being distinguishable from intrinsic below it. Measured, that is simply
  * false: for a forward-at-the-money one-year contract on a spot of 100 the price still exceeds
- * intrinsic by 3.9e-13 at `sigma = 1e-14`, and only collapses at `sigma = 1e-17` — eleven orders of
+ * intrinsic by 3.9e-13 at `sigma = 1e-14`, and only collapses at `sigma = 1e-16` — ten orders of
  * magnitude below the floor. The floor is there because 0.0001% annualised volatility is not a
  * market, not because the arithmetic gives out.
  *
@@ -241,6 +241,12 @@ function solve(
     // The bracket has collapsed to the resolution of a double. No further iteration can improve
     // the answer, and the midpoint is the best value representable.
     //
+    // The test is relative to `high`, not to `max(1, high)`. Every ordinary volatility is below
+    // 1, so the `max` made the threshold an absolute 8.9e-16 and stopped the bisection roughly
+    // 1e5 ulps early — at S = K = 10 000, T = 1, r = 0.05 the solver refused sigma = 0.058 at a
+    // tolerance of 1e-12 while claiming a bracket of width 6.8e-16 was "the resolution of a
+    // double", when 0.058 lies inside it and reproduces the price with residual exactly 0.
+    //
     // Returning it unconditionally was a silent breach of this module's one guarantee. With a
     // `priceTolerance` at or below roughly one ulp of the price, the midpoint can miss the target
     // by many multiples of it: at S = K = 10 000, T = 1, r = 0.05 and a tolerance of 1e-14, 32 of
@@ -248,7 +254,7 @@ function solve(
     // tolerance, the worst by 205x. The guarantee is that a returned volatility reproduces the
     // price, so the residual is checked here and a tolerance finer than the price can represent
     // is reported rather than quietly missed.
-    if (high - low <= 4 * Number.EPSILON * Math.max(1, high)) {
+    if (high - low <= 4 * Number.EPSILON * high) {
       const best = (low + high) / 2;
       const residual = Math.abs(priceAt(best) - target);
 

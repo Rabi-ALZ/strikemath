@@ -613,8 +613,8 @@ asymmetry is deliberate.
 **The bounds are economic, not numerical.** It would be tidy to say the floor sits where the price
 stops differing from intrinsic. Measured, that is false by ten orders of magnitude: for a
 forward-at-the-money one-year contract on a spot of 100, the price exceeds intrinsic by 3.99e-5 at
-`sigma = 1e-6`, by 3.91e-13 at `sigma = 1e-14`, and only becomes indistinguishable at
-`sigma = 1e-17`. The floor is where volatility stops being a market quantity — 0.0001% annualised
+`sigma = 1e-6`, by 3.91e-13 at `sigma = 1e-14`, by 3.55e-14 at `sigma = 1e-15`, and only becomes
+indistinguishable at `sigma = 1e-16`. The floor is where volatility stops being a market quantity — 0.0001% annualised
 — not where the arithmetic gives out. The ceiling is the same judgement at the other end: 500%
 annualised is past any traded market.
 

@@ -90,7 +90,16 @@ function callPrice(inputs: ResolvedOptionInputs): number {
   }
 
   const { d1, d2 } = computeD1D2(inputs);
-  return spotTerm * normalCdf(d1) - strikeTerm * normalCdf(d2);
+
+  // Clamped at 0 for the same reason the degenerate branches above are. A European price is
+  // non-negative by no-arbitrage, but this is a difference of two products that can both be
+  // subnormal, where only a handful of bits survive: at S = 2, K = 5000, T = 5, r = 0, q = 0.15,
+  // sigma = 0.1 the true value is a positive subnormal and the subtraction returns -1.102e-320.
+  // Inside the documented domain, at a rate of about 23 calls and 30 puts per 500 000 draws.
+  //
+  // The no-arbitrage bound test could not see it: its slack is 1e-9 * max(1, spotTerm, strikeTerm),
+  // which a violation of -1e-320 disappears into entirely.
+  return Math.max(spotTerm * normalCdf(d1) - strikeTerm * normalCdf(d2), 0);
 }
 
 function putPrice(inputs: ResolvedOptionInputs): number {
@@ -106,7 +115,9 @@ function putPrice(inputs: ResolvedOptionInputs): number {
   }
 
   const { d1, d2 } = computeD1D2(inputs);
-  return strikeTerm * normalCdf(-d2) - spotTerm * normalCdf(-d1);
+
+  // See the note in `callPrice`: a subnormal difference can come out negative.
+  return Math.max(strikeTerm * normalCdf(-d2) - spotTerm * normalCdf(-d1), 0);
 }
 
 /**

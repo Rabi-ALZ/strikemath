@@ -172,8 +172,8 @@ export function probabilityItmUnderQ(inputs: ItmInputs): number {
  * direct call does not. At expiry with the terminal price sitting exactly on break-even, both
  * sides are 0 — neither position is beyond it — so `1 -` reports the short as certain. And deep
  * in the money the complement collapses to a hard 0 where the true probability is small but
- * perfectly representable: 7.5e-21 at `S = 130, K = 100, T = 0.02, r = 0.05, sigma = 0.2,
- * premium = 0.01` — the rate matters, since at `r = 0` the same contract gives 1.04e-20 — which
+ * perfectly representable: 6.97e-21 at `S = 130, K = 100, T = 0.02, r = 0.05, sigma = 0.2,
+ * premium = 0.01` — the rate matters, since at `r = 0` the same contract gives 9.72e-21 — which
  * `normalCdf` delivers and `1 - x` discards in full. This is
  * the same defect that was removed from the library itself in review; it must not be reintroduced
  * in the caller's code by this documentation.

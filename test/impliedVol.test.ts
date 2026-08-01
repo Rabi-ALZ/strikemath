@@ -315,6 +315,57 @@ describe('validation', () => {
     // And the refusals are real, not a vacuous pass: this tolerance is genuinely unreachable here.
     expect(refused).toBeGreaterThan(0);
   });
+
+  it('returns the collapsed midpoint when it does land inside the tolerance', () => {
+    // The other side of the branch above. When the bracket reaches the resolution of a double,
+    // the midpoint is not the last iterate and can be the better of the two — so the residual is
+    // checked rather than assumed, and a midpoint inside tolerance is returned rather than
+    // refused. Turning the silent return into an unconditional throw would have traded one wrong
+    // answer for another.
+    const view = new DataView(new ArrayBuffer(8));
+    const contract = { spot: 10, strike: 10, timeToExpiry: 5, riskFreeRate: 0.05 };
+
+    view.setFloat64(0, bsCall({ ...contract, volatility: 0.3 }));
+    view.setBigUint64(0, view.getBigUint64(0) - 3n);
+    const optionPrice = view.getFloat64(0);
+
+    const volatility = impliedVolatility({
+      ...contract,
+      optionPrice,
+      optionType: 'call',
+      priceTolerance: 1e-15,
+    });
+
+    expect(Math.abs(bsCall({ ...contract, volatility }) - optionPrice)).toBeLessThanOrEqual(1e-15);
+  });
+
+  it('solves a price it can reproduce exactly, at a tolerance well below the default', () => {
+    // Regression. The bracket-collapse test was `high - low <= 4 * EPSILON * max(1, high)`, and
+    // every ordinary volatility is below 1, so the `max` made the threshold an absolute 8.9e-16
+    // and stopped the bisection roughly 1e5 ulps early. Once the collapse branch started throwing
+    // rather than returning silently, that turned into a refusal of prices the solver can hit
+    // exactly: at S = K = 10 000 with a tolerance of 1e-12 it declined sigma = 0.058 while
+    // claiming a bracket 98 000 doubles wide was "the resolution of a double".
+    const contract = { spot: 10_000, strike: 10_000, timeToExpiry: 1, riskFreeRate: 0.05 };
+
+    for (const volatility of [0.058, 0.1, 0.2, 0.35, 0.9, 2.5]) {
+      const optionPrice = bsCall({ ...contract, volatility });
+
+      for (const priceTolerance of [1e-10, 1e-12, 1e-13]) {
+        const solved = impliedVolatility({
+          ...contract,
+          optionPrice,
+          optionType: 'call',
+          priceTolerance,
+        });
+        const residual = Math.abs(bsCall({ ...contract, volatility: solved }) - optionPrice);
+
+        expect(residual, `sigma ${volatility} at tolerance ${priceTolerance}`).toBeLessThanOrEqual(
+          priceTolerance,
+        );
+      }
+    }
+  });
 });
 
 describe('property: the solver inverts the pricer over the documented domain', () => {

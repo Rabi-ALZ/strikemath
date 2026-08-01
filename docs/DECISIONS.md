@@ -624,3 +624,75 @@ look-for-the-sibling check found the kink table. The product-of-extremes check c
 `gamma` NaN already documented in §9.
 
 Tests 179 -> 180, coverage still 100% on all four metrics.
+
+---
+
+## 2026-08-01 — Second verifier run: the fix for the fix was also wrong
+
+`quant-verifier` was run again against the fixes from the run above, on the principle that made
+round two necessary in July. It found nine more things. **Three were defects in behaviour, and two
+of those were introduced by the previous fix.**
+
+**1. The step-count advice was wrong in the other direction.** Replacing `floor(x) + 1` with
+`ceil(x)` corrected the integral-ratio overshoot and introduced an undershoot: `crrPrice` began
+advising a count that it then refused. At `S = K = 100, T = 0.25, r = 0, q = 0.15, sigma = 0.025`
+the message said "raise steps to at least 9" and 9 throws; 10 prices at 3.6806. A caller following
+the advice in a loop never terminates.
+
+The cause is that the bound is exact in real arithmetic and `p` is not computed in real
+arithmetic. When `q > r` the numerator compares `exp(-a)` against `1 / exp(a)`, which differ by an
+ulp, so `p` lands at -1.3e-14 rather than 0 and the guard refuses it. When `r > q` both sides come
+from `exp(a)` with the same argument, `p` is exactly 1, and every sweep of positive drift sees
+nothing. **The test added with the previous fix used `r = 0.25, q = 0.15` — positive drift again.**
+
+Then the sweep written to catch that found a third case, in the opposite direction: at
+`r = -0.02, q = 0, sigma = 0.001, T = 0.04` the ratio is exactly 16 in real arithmetic and
+16.000000000000004 as a double, so `ceil` says 17 while 16 prices. The bound can be wrong by one
+either way.
+
+The helper no longer trusts a closed form. It computes the bound, then verifies candidates against
+the same expression the guard evaluates, starting two below and stopping eight above. Both
+mutations — disabling the verification, and starting the search at the bound rather than below it
+— now fail the suite.
+
+**2. `impliedVolatility` refused prices it can reproduce exactly.** The bracket-collapse test was
+`high - low <= 4 * eps * max(1, high)`. Every ordinary volatility is below 1, so the `max` made
+the threshold an absolute 8.9e-16 and stopped the bisection roughly 1e5 ulps early. While the
+branch returned silently this produced a slightly wrong answer; once the previous fix made it
+throw, it became a refusal: at `S = K = 10 000, T = 1, r = 0.05` the solver declined
+`sigma = 0.058` at a tolerance of 1e-12, claiming a bracket 98 000 doubles wide was "the
+resolution of a double". 47 of 200 exactly-reproducible targets were refused at 1e-13.
+
+**A guard added to fix one defect that then rejects valid input is the exact shape of round two's
+second finding**, where the binomial representability check refused puts. The criterion is now
+relative — `4 * eps * high` — and both sides of the collapse branch are tested.
+
+**3. `bsCall` and `bsPut` returned negative prices inside the documented domain.** Pre-existing,
+and the most serious finding of either run. At `S = 5000, K = 2, T = 5, r = 0.15, sigma = 0.1` the
+put returns -1.102e-320. A European price is non-negative by no-arbitrage; the analytic branch is a
+difference of two products that can both be subnormal, where the subtraction keeps only a handful
+of bits. Measured rate inside the domain: about 23 calls and 30 puts per 500 000 draws.
+
+Nothing caught it. The no-arbitrage bound test has a slack of `1e-9 * max(1, spotTerm, strikeTerm)`,
+which a violation of -1e-320 disappears into completely — a tolerance chosen for the scale of
+ordinary prices, applied to a quantity that is not of that scale. Both exits are now clamped at 0,
+and a sweep of 7 200 in-domain contracts asserts it.
+
+**The remaining six were wrong numbers or wrong prose**, including two more of the kind this review
+keeps producing: the replacement fixture point `-4.87`, added hours earlier to demonstrate the tail
+floor, has a relative error of 5.7e-16 and would have passed the strict tolerance it was supposed
+to exceed; and the note warning against probing below `sigma = 1e-8` was attached to the one
+contract where no such turnaround happens, because `ln(S/K)` and `r - q` are both bitwise zero
+there.
+
+### What this run settles about when to stop
+
+Three rounds now, and the shape is stable: each finds fewer defects in the mathematics and more in
+whatever was written last. Rounds one and two found nine defects in `/src`. The ten-question review
+found sixteen, fifteen of them in claims. This pair of verifier runs found eighteen, five of them
+in behaviour and three of those introduced by the review itself.
+
+It does not converge to zero. It converges on **the newest layer** — the defects are always in what
+was written most recently, however carefully the older material was checked. So the stopping rule
+cannot be "no defects remain". It has to be that the defects still being found are cheaper to fix
+after publication than to hunt for before it, and that judgement is now the only thing left open.

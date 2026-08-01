@@ -271,21 +271,26 @@ const CDF_POINTS = [
   // Past the z = 37 mark that a truncating implementation would report as 0. Q(-37) is 5.7e-300,
   // eight orders of magnitude above the smallest normal double.
   '-37',
-  // Deliberately awkward points: z for which z^2/2 is NOT exactly representable as a double.
+  // Points chosen to exercise the relative-accuracy floor in the tail.
   //
-  // Every other value in this list is an integer, a half-integer or a round decimal — which is
-  // what a person writes down when choosing test inputs, and which is exactly where z^2/2 is
-  // exact. That made the whole grid unrepresentative in the one way that mattered: relative
-  // accuracy in the tail is floored by the rounding of that argument, since
-  // d(exp(-u))/exp(-u) = -du, so measuring only at exact-u points reported a floor of 2.4e-16
-  // where the true figure is 5.2e-15. See docs/MATH.md §3.4 and the DECISIONS entry of
-  // 2026-08-01.
+  // Relative accuracy above the branch point is limited by the rounding of u = z^2/2 inside
+  // exp(-u), since d(exp(-u))/exp(-u) = -du. Most of the values above are integers, half-integers
+  // or round decimals — what a person writes down — and for those u is usually exact, so the
+  // floor vanishes. Measuring only there reported a floor of 2.4e-16 where the true figure is
+  // 5.2e-15. See docs/MATH.md §3.4 and the DECISIONS entries of 2026-08-01.
   //
-  // Each is verified to have |du| > 0 rather than assumed to. Two earlier choices did not: 6.75
-  // is 27/4, so z^2/2 = 22.78125 = 22 + 25/32 is exact in binary and |du| is 0 — a member of the
-  // very set the point was chosen to avoid — and 4.36 gave only 1.46e-16. Writing down a value
-  // that "looks awkward" reproduces the original mistake at one remove.
-  '-4.87',
+  // Each of these five is verified — in exact arithmetic, not by eye — to have |du| large enough
+  // that the floor it implies exceeds the 1e-15 tolerance the other tail points are held to. Two
+  // earlier attempts at this list did not meet that bar, and both failed by being chosen because
+  // they looked awkward rather than measured: 6.75 is 27/4, so u = 22.78125 is exact in binary and
+  // |du| is 0 — a member of the very set the point was meant to avoid — while 4.36 and 4.87 gave
+  // |du| of 1.5e-16 and 7.5e-16, small enough that both would have passed the strict tolerance
+  // unchanged.
+  //
+  // Note that "u is exact" is not the same test as "the point demonstrates the floor". Among the
+  // values above, -4.6 and -7.07106781186547 also have inexact u, but with |du| of 7.1e-17 and
+  // 3.1e-16 they clear 1e-15 comfortably and belong with the strict group.
+  '-4.28',
   '-6.83',
   '-11.6',
   '-13.3',

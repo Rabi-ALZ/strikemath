@@ -394,11 +394,77 @@ describe('validation', () => {
       crrPrice({ ...withYield, steps: 1 });
       expect.unreachable('the tree should have been refused');
     } catch (error) {
-      expect((error as Error).message).toMatch(/Raise steps to at least 40,/);
+      expect((error as Error).message).toMatch(/Raise steps to at least 40\./);
     }
 
     expect(() => crrPrice({ ...withYield, steps: 39 })).toThrow(/probability/i);
     expect(Number.isFinite(crrPrice({ ...withYield, steps: 40 }))).toBe(true);
+  });
+
+  it('advises a count that works, swept over the domain including q > r', () => {
+    // Regression, twice over. `floor(x) + 1` overshot on integral ratios; `ceil(x)` undershot
+    // whenever q > r, because there `p` is computed as `exp(-a) - 1/exp(a)` over `u - d` and
+    // lands at -1.3e-14 rather than 0 — so the advised count was itself refused and a caller
+    // following the advice in a loop never terminates. With r > q both sides come from the same
+    // `exp(a)` and `p` is exactly 1, which is why a positive-drift sweep sees nothing.
+    //
+    // The contract is checked directly rather than through a formula: whatever count the message
+    // names must price, and the count below it must not.
+    let refusals = 0;
+    let withYieldAbove = 0;
+
+    for (const riskFreeRate of [-0.02, 0, 0.05, 0.25]) {
+      for (const dividendYield of [0, 0.03, 0.15]) {
+        for (const volatility of [0.001, 0.005, 0.025, 0.1]) {
+          for (const timeToExpiry of [0.04, 0.25, 1, 10]) {
+            const inputs = {
+              spot: 100,
+              strike: 100,
+              timeToExpiry,
+              riskFreeRate,
+              volatility,
+              dividendYield,
+              optionType: 'put',
+              exerciseStyle: 'american',
+            } as const;
+
+            let advised = 0;
+            try {
+              crrPrice({ ...inputs, steps: 1 });
+              continue;
+            } catch (error) {
+              const found = /Raise steps to at least (\d+)\./.exec((error as Error).message);
+              if (!found) continue;
+              advised = Number(found[1]);
+            }
+
+            // Pricing is O(n^2), and the point here is the boundary rather than the tree, so
+            // combinations needing a large count are counted and skipped. The two defects this
+            // guards against both appeared well inside this limit, at 9 and at 400 steps.
+            if (advised > 600) continue;
+
+            refusals += 1;
+            if (dividendYield > riskFreeRate) withYieldAbove += 1;
+
+            const label = `r=${riskFreeRate} q=${dividendYield} sigma=${volatility} T=${timeToExpiry}`;
+            expect(
+              Number.isFinite(crrPrice({ ...inputs, steps: advised })),
+              `${label}: advised ${advised} was itself refused`,
+            ).toBe(true);
+
+            if (advised > 1) {
+              expect(() => crrPrice({ ...inputs, steps: advised - 1 }), label).toThrow(
+                /probability/i,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // Not a vacuous pass, and the q > r side is genuinely exercised.
+    expect(refusals).toBeGreaterThan(20);
+    expect(withYieldAbove).toBeGreaterThan(0);
   });
 
   it('says plainly when no legal step count works, and qualifies the fallback', () => {

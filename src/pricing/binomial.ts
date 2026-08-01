@@ -94,13 +94,48 @@ function maxRepresentableSteps(inputs: ResolvedOptionInputs): number {
  */
 function minimumStepsForValidProbability(inputs: ResolvedOptionInputs): number {
   const drift = Math.abs(inputs.riskFreeRate - inputs.dividendYield);
+  const bound = Math.max(1, Math.ceil((inputs.timeToExpiry * drift ** 2) / inputs.volatility ** 2));
 
-  // `ceil`, not `floor(x) + 1`. The guard accepts `p <= 1`, so the requirement is `n >= x` and
-  // an exactly integral `x` is already usable: at S = K = 100, r = 0.25, q = 0, sigma = 0.125,
-  // T = 1 the ratio is exactly 4 and `steps: 4` prices at 22.1199, while `floor(x) + 1` sent the
-  // caller to 5. The three worked examples in docs/MATH.md 5.1 are all integral, so the two forms
-  // disagreed on precisely the cases the documentation highlights.
-  return Math.ceil((inputs.timeToExpiry * drift ** 2) / inputs.volatility ** 2);
+  // The closed form is exact in real arithmetic and `p` is not computed in real arithmetic, so
+  // the bound is a starting point and not an answer. Two rounds of getting this wrong:
+  //
+  //   `floor(x) + 1` implements `n > x` where the guard accepts `n >= x`, so it overshot by one
+  //   on every integral ratio — including all three worked examples in docs/MATH.md 5.1.
+  //
+  //   `ceil(x)` alone undershoots whenever q > r. On that side the numerator compares
+  //   `exp(-a)` against `1 / exp(a)`, which differ by an ulp, so `p` lands at -1.3e-14 rather
+  //   than 0 and the guard refuses the very count being advised. At S = K = 100, T = 0.25,
+  //   r = 0, q = 0.15, sigma = 0.025 the bound is 9 and the first count that works is 10. With
+  //   r > q both sides come from `exp(a)` with the same argument, `p` is exactly 1, and a sweep
+  //   of positive drift sees none of it.
+  //
+  // And it can land one too HIGH, because the ratio itself is rounded: at r = -0.02, q = 0,
+  // sigma = 0.001, T = 0.04 it is exactly 16 in real arithmetic and 16.000000000000004 as a
+  // double, so `ceil` says 17 while 16 prices perfectly well. The search therefore starts below
+  // the bound as well as above it.
+  //
+  // What the message promises is the smallest count the *guard* accepts, so candidates are tested
+  // against the guard's own expression rather than against a closed form. `p` approaches 1/2
+  // monotonically as steps rise, so the window only has to cover the rounding; it is bounded
+  // rather than open-ended regardless.
+  const first = Math.max(1, bound - 2);
+  for (let candidate = first; candidate <= bound + 8 && candidate <= MAX_BINOMIAL_STEPS;) {
+    if (isProbabilityValid(inputs, candidate)) return candidate;
+    candidate += 1;
+  }
+
+  return bound;
+}
+
+/** The transition probability the guard will compute, at a hypothetical step count. */
+function isProbabilityValid(inputs: ResolvedOptionInputs, steps: number): boolean {
+  const dt = inputs.timeToExpiry / steps;
+  const up = Math.exp(inputs.volatility * Math.sqrt(dt));
+  const down = 1 / up;
+  const probabilityUp =
+    (Math.exp((inputs.riskFreeRate - inputs.dividendYield) * dt) - down) / (up - down);
+
+  return probabilityUp >= 0 && probabilityUp <= 1;
 }
 
 /** {@link OptionInputs} plus the contract side, exercise style and tree resolution. */
@@ -265,9 +300,9 @@ function priceTree(
     // they are looking for guidance.
     const advice =
       needed <= MAX_BINOMIAL_STEPS
-        ? `Raise steps to at least ${needed}, and well above it for an answer worth having: at ` +
-          `exactly ${needed} the up move equals the forward, so p is 1, the tree carries no ` +
-          'dispersion and every path lands on the forward.'
+        ? `Raise steps to at least ${needed}. That is the smallest count admitting a valid ` +
+          'probability, which makes it a floor on validity and not a recommendation — the tree ' +
+          'is at its coarsest there, so use several times more before trusting the price.'
         : `No legal step count works: ${needed} steps would be needed and the cap is ` +
           `${MAX_BINOMIAL_STEPS}. This happens when sigma < |r - q| sqrt(T / ${MAX_BINOMIAL_STEPS}). ` +
           'For a European contract use bsPrice, which has no such limit. An American contract ' +

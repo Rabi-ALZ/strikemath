@@ -69,8 +69,12 @@ export interface GreeksInputs extends OptionInputs {
  * Theta's limit is 0 **here only because r = q**. In general it is `(q - r) spotTerm / 2`, which
  * is -1.98 at the kink with r = 0.05 and q = 0.01. Do not read this row as a property of theta.
  *
- * Do not probe below about sigma = 1e-8 to check this: `d1` divides a cancellation residual of
- * order 1e-16 by sigma sqrt(T), so the analytic branch turns around and moves away from the limit.
+ * At THIS contract the sequence converges all the way down — `ln(S/K)` and `r - q` are both
+ * bitwise zero, so `d1` has no cancellation residual to amplify and delta reaches the reported
+ * value exactly at sigma = 1e-16. Elsewhere it does not: at a kink with `r != q` the residual is
+ * of order 1e-16 and `d1` divides it by sigma sqrt(T), so below about sigma = 1e-8 the analytic
+ * branch turns around. At S = 100, r = 0.05, q = 0.01, K = S e^((r-q)T) delta reads 0.4936546 at
+ * sigma = 1e-14 against a limit of 0.4950249. See docs/MATH.md 6.2.
  *
  * The rule is what makes this predictable: any Greek added later has its boundary behaviour
  * already determined. See docs/MATH.md §6.2.
