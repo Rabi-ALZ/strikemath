@@ -271,6 +271,22 @@ const CDF_POINTS = [
   // Past the z = 37 mark that a truncating implementation would report as 0. Q(-37) is 5.7e-300,
   // four orders of magnitude above the smallest normal double.
   '-37',
+  // Deliberately awkward points: z for which z^2/2 is NOT exactly representable as a double.
+  //
+  // Every other value in this list is an integer, a half-integer or a round decimal — which is
+  // what a person writes down when choosing test inputs, and which is exactly where z^2/2 is
+  // exact. That made the whole grid unrepresentative in the one way that mattered: relative
+  // accuracy in the tail is floored by the rounding of that argument, since
+  // d(exp(-u))/exp(-u) = -du, so measuring only at exact-u points reported a floor of 2.4e-16
+  // where the true figure is 5.2e-15. See docs/MATH.md §3.4 and the DECISIONS entry of
+  // 2026-08-01.
+  //
+  // These five are the worst cases found by a dense sweep of |du| in their respective decades.
+  '-4.36',
+  '-6.75',
+  '-11.6',
+  '-13.3',
+  '-14.7',
 ];
 
 const QUANTILE_POINTS = [

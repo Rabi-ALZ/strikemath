@@ -58,8 +58,12 @@ These assertions are never weakened. If one fails, the code is wrong — not the
 generated in BigInt fixed-point arithmetic at adaptive precision, with pi computed from Machin's
 formula so that not even that constant is taken on trust. The generator cross-checks every value
 at two working precisions and refuses to emit one where they disagree. Worst measured relative
-error: **1.2e-14** below |z| = 3, and **2.4e-16** above it — including at z = 20, where the
-probability itself is 2.8e-89.
+error below |z| = 3: **1.4e-14**. Above it the approximation is no longer the limit — the rounding
+of `z²/2` inside the exponential is — while the published 5-level form is five to seven orders of
+magnitude worse across the same range. An earlier version of this README claimed a better tail
+figure; it had been measured at integer and half-integer points, which are exactly the ones where
+that rounding vanishes. The correction and the mechanism are in
+[`docs/MATH.md`](./docs/MATH.md) §3.4.
 
 **Put-call parity is treated as a structural identity, not a tolerance.** `C - P` reduces to
 `S e^(-qT) [N(d1) + N(-d1)] - K e^(-rT) [N(d2) + N(-d2)]`, so it holds through `N(x) + N(-x) = 1`
@@ -73,7 +77,11 @@ monotonicity, Greek bounds, no-arbitrage bounds and the absence of any NaN or In
 code path — that catches a dropped term or a sign error in a way no single benchmark can.
 
 **Nothing fails silently.** Every error path throws with a message naming the offending value.
-No function in this library returns `NaN`.
+**Inside the documented input domain no function returns `NaN` or `Infinity`** — that is a property
+test rather than a promise. Outside it, combinations of two simultaneous extremes can produce
+both: `gamma` is `phi(d1) / (S sigma sqrt(T))`, which is `0/0` once the denominator underflows, and
+theta's `sigma / (2 sqrt(T))` term overflows for a large enough `sigma` at a small enough `T`. The
+domain and the two mechanisms are in [`docs/MATH.md`](./docs/MATH.md) §9.
 
 Read [`docs/MATH.md`](./docs/MATH.md) for every formula, assumption and measured accuracy figure,
 and [`docs/DECISIONS.md`](./docs/DECISIONS.md) for why each choice was made — including the one
@@ -126,8 +134,8 @@ inverseNormalCdf(p);
 ```
 
 The standard normal, checked against 40-digit BigInt ground truth rather than against a published
-table. Worst measured relative error **1.2e-14** below |z| = 3 and **2.4e-16** above it, with no
-tail cutoff — `normalCdf(-37)` returns 5.7e-300, not 0.
+table, with no tail cutoff — `normalCdf(-37)` returns 5.7e-300, not 0. Accuracy figures and the
+floor on relative tail accuracy are in [`docs/MATH.md`](./docs/MATH.md) §3.4.
 
 If you take one thing from this library, take this one. It is a concrete, checkable promise, where
 "correct options mathematics" is a claim everyone makes.

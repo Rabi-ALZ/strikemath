@@ -72,6 +72,32 @@ function maxRepresentableSteps(inputs: ResolvedOptionInputs): number {
   return Math.min(limit, MAX_BINOMIAL_STEPS);
 }
 
+/**
+ * The smallest `steps` for which the risk-neutral probability lands inside `[0, 1]`.
+ *
+ * `p` is inside the interval exactly while `sigma sqrt(dt) > |r - q| dt`, which rearranges to
+ * `n > T (|r - q| / sigma)^2`. Raising `steps` therefore always fixes the problem in principle —
+ * but not always in practice, because `steps` is capped at {@link MAX_BINOMIAL_STEPS}. The
+ * requirement exceeds the cap for `sigma < |r - q| sqrt(T / 20000)`, a region that reaches into
+ * the documented domain: at `r - q = 0.25` and `T = 10` it covers every volatility below 0.0056,
+ * and the domain starts at 0.001.
+ *
+ * The caller is told the number either way, so "increase steps" is never advice they cannot act
+ * on or check.
+ *
+ * Only ever called from the `p` guard, which is unreachable at zero drift: with `r = q` the
+ * numerator is `1 - d` and the denominator `u - d`, and `1 < u` makes the ratio a proper fraction
+ * for any `u > 1`. So there is no zero-drift case to special-case here.
+ *
+ * @returns The smallest `steps` for which `p` lands inside `[0, 1]`, which may exceed
+ *          {@link MAX_BINOMIAL_STEPS}.
+ */
+function minimumStepsForValidProbability(inputs: ResolvedOptionInputs): number {
+  const drift = Math.abs(inputs.riskFreeRate - inputs.dividendYield);
+
+  return Math.floor((inputs.timeToExpiry * drift ** 2) / inputs.volatility ** 2) + 1;
+}
+
 /** {@link OptionInputs} plus the contract side, exercise style and tree resolution. */
 export interface BinomialInputs extends OptionInputs {
   readonly optionType: OptionType;
@@ -222,10 +248,28 @@ function priceTree(
   const probabilityUp = (Math.exp((riskFreeRate - dividendYield) * dt) - down) / (up - down);
 
   if (!(probabilityUp >= 0 && probabilityUp <= 1)) {
+    const needed = minimumStepsForValidProbability(inputs);
+
+    // "Increase steps" is only advice if a legal step count exists. Past the cap it is a dead
+    // end, and saying so is the whole point of refusing rather than returning a number.
+    //
+    // The fallback is qualified deliberately. bsPrice is exact for a European contract and is a
+    // lower bound for an American one — at S = 40, K = 100, T = 10, r = 0.25, sigma = 0.001 it
+    // returns 0.00 for a put that can be exercised immediately for 60.00. Naming it without the
+    // qualification would hand the caller a catastrophically wrong number at exactly the moment
+    // they are looking for guidance.
+    const advice =
+      needed <= MAX_BINOMIAL_STEPS
+        ? `Raise steps to at least ${needed}.`
+        : `No legal step count works: ${needed} steps would be needed and the cap is ` +
+          `${MAX_BINOMIAL_STEPS}. This happens when sigma < |r - q| sqrt(T / ${MAX_BINOMIAL_STEPS}). ` +
+          'For a European contract use bsPrice, which has no such limit. An American contract ' +
+          'in this region has no fallback in this library — see docs/MATH.md 5.1.';
+
     throw new InvalidInputError(
       `the tree's risk-neutral probability is ${probabilityUp}, outside [0, 1]: the up and ` +
         'down moves cannot straddle the forward at this step size, so the tree admits ' +
-        'arbitrage. Increase steps, or use the analytic pricer.',
+        `arbitrage. ${advice}`,
     );
   }
 

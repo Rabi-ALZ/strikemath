@@ -163,7 +163,18 @@ export function probabilityItmUnderQ(inputs: ItmInputs): number {
  * is discounted; a screen that simply adds the premium to the strike will report a slightly
  * different number.
  *
- * For a **short** position the probability of finishing beyond break-even is `1 - ` this value.
+ * For a **short** position, take the other side of the same level directly:
+ * {@link probabilityBelowUnderQ} at `K + premium e^(rT)` for a short call,
+ * {@link probabilityAboveUnderQ} at `K - premium e^(rT)` for a short put.
+ *
+ * **Do not compute it as `1 -` this value.** The complement fails in two separate ways that the
+ * direct call does not. At expiry with the terminal price sitting exactly on break-even, both
+ * sides are 0 — neither position is beyond it — so `1 -` reports the short as certain. And deep
+ * in the money the complement collapses to a hard 0 where the true probability is small but
+ * perfectly representable: 7.5e-21 at `S = 130, K = 100, T = 0.02, sigma = 0.2, premium = 0.01`,
+ * which `normalCdf` delivers to 1.6e-16 relative accuracy and `1 - x` discards in full. This is
+ * the same defect that was removed from the library itself in review; it must not be reintroduced
+ * in the caller's code by this documentation.
  *
  * A put whose break-even falls at or below zero cannot be profitable at expiry, and the result is
  * 0 rather than an error.

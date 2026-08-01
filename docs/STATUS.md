@@ -2,51 +2,64 @@
 
 Updated at the end of each session.
 
-## 2026-07-30 — Phase 0 complete, API frozen, not published
+## 2026-08-01 — Documentation reviewed against measurement, still not published
 
-The library is built, verified, its public surface is frozen, and nothing is published. Work stops
-here deliberately: the binding constraint is no longer correctness.
+Phase 0 was already complete and the API frozen. This session did the one task that had been
+named as non-delegable: reading `docs/MATH.md` and `README.md` as a quant would, and defending
+every convention. Ten questions, each answered by measuring rather than by reading.
 
 ### Verification
 
-- `pnpm test` — **175 tests across 12 files**
+- `pnpm test` — **179 tests across 12 files**
 - `pnpm test:coverage` — **100%** of statements, branches, functions and lines
-- `pnpm typecheck`, `pnpm lint`, `pnpm build` — clean; ESM, CJS, `.d.ts`, `.d.cts`
-- `pnpm examples`, `pnpm examples:smoke` — every example runs, the built package works
-- Runtime dependencies: none, confirmed programmatically
+- `pnpm typecheck`, `pnpm lint` — clean
+- Runtime dependencies: none
 
-Externally anchored so no module rests on self-consistency: the normal distribution against
-40-digit BigInt arithmetic; prices and Greeks against Hull; the European tree against a closed-form
-binomial sum; American exercise against Merton's perpetual put; implied volatility against an exact
-closed-form inverse at the forward and against a bisection-only solver. The Black-Scholes PDE ties
-theta, gamma, delta and the price into one identity, worst relative residual 1.0e-14.
+### What the review found
 
-### The public surface, frozen
+**Sixteen defects, and all but one of them in the claims rather than in the code.** The full
+account is in DECISIONS.md under 2026-08-01. The ratio is the point: two earlier rounds of
+adversarial review of `/src` found nine defects in the mathematics; this pass found sixteen in the
+description of that mathematics, while the code needed exactly one behavioural change.
 
-38 exports in eight groups: distribution 3, pricing 4, Greeks 8, scaling 4, volatility 1, risk 10,
-errors 2, constants 6. Named object parameters everywhere, without exception. Named exports only.
+The code held. What was written about the code did not — because prose has no test suite.
 
-Cut during the freeze, and the reasoning is in DECISIONS.md: `d1d2` (its throw was
-indistinguishable from an input error at the call site) and `historicalLossQuantile` (duplicated
-`historicalVar` with the library's only positional signature). `probabilityOfProfitUnderQ` was
-renamed to `breakEvenProbabilityUnderQ` before publication, while it cost nothing.
+Two patterns account for nearly all of it. **Convenient points and convenient special cases**
+(seven instances): the reference fixtures were integers and half-integers, which is precisely where
+`z^2/2` is exactly representable, so the tail-accuracy figure was measured on the set where the
+error vanishes. **Recipes that outlive the fix** (four instances): `1 - N(d2)` was removed from the
+source in round one and survived in a JSDoc block as advice to callers.
 
-### What three rounds of review found
+Three of the corrections are to figures inside DECISIONS.md itself, including one in the entry
+that establishes the library's thesis. Knowing the pattern did not prevent it. Only measuring did.
 
-Round one, against a suite already green at 146 assertions: five defects. Round two, run against
-those fixes because they had never been reviewed: four more, two of them created by the round-one
-fixes. Regression testing surfaced a fifth. A later critique pass found the boundary values had
-been documented as conventions when they are limits.
+### The code change
 
-Coverage stood at 98.65% when the first five were found, and every one of them was in a covered
-line. It measures execution, not correctness.
+One, to `crrPrice`. Its risk-neutral-probability error now names the step count that would be
+needed, says plainly when that exceeds the 20 000 cap — a region reaching into the documented
+domain — and qualifies the `bsPrice` fallback to European contracts. The unqualified version
+returned 0.00 for an American put worth 60.00.
 
-### The named risk
+### Tests added
 
-**The most recent fixes are themselves unreviewed** — vega at the kink, the call-only tree guard,
-`hasNoDispersion`, and the two API cuts. One review pass was budgeted after the round-two fixes
-and it was spent. This is a known and accepted risk, not an oversight. A fresh session should run
-`quant-verifier` against them before anything is published.
+- The relative-accuracy floor in the tail, at five points where `z^2/2` is not exactly
+  representable, asserted against the `(z^2/2) eps` envelope
+- Theta at the kink with `r != q`, which no test reached: implementing the old wrong claim passed
+  all 176 tests, eight runs out of eight
+- The two branches of the new `crrPrice` advice, including that the step count it names actually
+  works and the one below it does not
+
+The boundary-rule property probe moved from `sigma = 1e-9` to `1e-8`, because below roughly 1e-8
+the analytic branch moves away from the limit rather than towards it.
+
+### Named risks
+
+- **The `quant-verifier` subagent has still not been run in its own right.** It is defined in
+  `.claude/agents/`, and this session added four checks to it — mutation testing for coverage gaps,
+  searching the documentation after a code fix, sweeping products of extremes, and looking for the
+  sibling of any correct qualification. None of those has been exercised by the agent itself.
+- **This session's own work is unreviewed**, on the same principle that made round two necessary:
+  a fix carries the blind spot of the thing it repairs.
 
 ### Before the button can be pressed
 
@@ -55,11 +68,5 @@ All reversible, none urgent, all decisions rather than chores:
 - `author` and `repository` in package.json are placeholders
 - version is `0.0.0`; `0.1.0` is the intended first publication
 - no GitHub organisation, no CI run, and therefore correctly no badge
-- `quant-verifier` is defined in `.claude/agents/` but was only ever run through a
-  general-purpose agent; it registers from the next session
-
-### Not a chore, and not delegable
-
-Read `docs/MATH.md` and `README.md` in full. Not to find errors — two review rounds and 175 tests
-have addressed those — but to be able to defend every convention to a quant who asks why. That was
-the stated criterion for publication, and it is the one thing nobody else can do.
+- the README's section on Q-probabilities does not yet carry the delta-versus-`N(d2)` point from
+  MATH.md §2.1, which is the library's sharpest single teaching point for a developer audience

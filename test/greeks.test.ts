@@ -29,6 +29,38 @@ function centralDifference(f: (x: number) => number, x: number, h: number): numb
   return (f(x + h) - f(x - h)) / (2 * h);
 }
 
+/**
+ * The strike that puts the forward exactly on the kink, where `spotTerm === strikeTerm`.
+ *
+ * With `r = q` this is simply `strike = spot`, which is how every kink test here was originally
+ * written — and it is why theta's limit at the kink looked like 0: at `r = q` it is 0, by
+ * coincidence rather than by rule. Reaching the kink with `r != q` needs the strike nudged onto
+ * the exact double, because the branch is decided by an equality of floats and not of reals.
+ */
+function kinkStrike(
+  spot: number,
+  riskFreeRate: number,
+  dividendYield: number,
+  timeToExpiry: number,
+): number {
+  const spotTerm = spot * Math.exp(-dividendYield * timeToExpiry);
+  const view = new DataView(new ArrayBuffer(8));
+  const nudge = (value: number, by: bigint): number => {
+    view.setFloat64(0, value);
+    view.setBigUint64(0, view.getBigUint64(0) + by);
+    return view.getFloat64(0);
+  };
+
+  let strike = spot * Math.exp((riskFreeRate - dividendYield) * timeToExpiry);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const strikeTerm = strike * Math.exp(-riskFreeRate * timeToExpiry);
+    if (strikeTerm === spotTerm) return strike;
+    strike = nudge(strike, strikeTerm < spotTerm ? 1n : -1n);
+  }
+
+  throw new Error(`no strike reaches the kink for spot ${spot}, r ${riskFreeRate}`);
+}
+
 function expectRelative(actual: number, expected: number, tolerance: number, label: string): void {
   const error = Math.abs(actual - expected) / Math.abs(expected);
   expect(
@@ -303,6 +335,46 @@ describe('boundary cases', () => {
       // agree with the boundary branch at exactly zero.
       const justAbove = callGreeks({ ...atKink, volatility: Number.MIN_VALUE });
       expect(justAbove.vega).toBeCloseTo(callGreeks(atKink).vega, 10);
+    }
+  });
+
+  it('reports theta at the kink as (q - r) spotTerm / 2, which is 0 only when r equals q', () => {
+    // Every other kink test in this file sets dividendYield = riskFreeRate, and at r = q theta's
+    // limit is 0 — so "theta is 0 at the kink" looked true, in the documentation and in the
+    // suite, for as long as nobody tried r != q. Implementing that wrong claim as code passed all
+    // 176 tests, eight runs out of eight. This test is what catches it.
+    //
+    // At the kink spotTerm = strikeTerm, so as sigma -> 0 the first term of theta,
+    // -S e^(-qT) phi(d1) sigma / (2 sqrt(T)), decays linearly while the other two converge on
+    // N(0) = 1/2:
+    //
+    //   call theta -> q spotTerm / 2 - r strikeTerm / 2 = (q - r) spotTerm / 2
+    //   put theta  -> the same with the sign reversed
+    for (const [spot, riskFreeRate, dividendYield, timeToExpiry] of [
+      [100, 0.05, 0.01, 1],
+      [100, 0.01, 0.08, 1],
+      [50, -0.02, 0.1, 0.25],
+      [1000, 0.25, 0, 3],
+    ] as const) {
+      const strike = kinkStrike(spot, riskFreeRate, dividendYield, timeToExpiry);
+      const atKink = { spot, strike, timeToExpiry, riskFreeRate, dividendYield, volatility: 0 };
+
+      const spotTerm = spot * Math.exp(-dividendYield * timeToExpiry);
+      const expected = ((dividendYield - riskFreeRate) * spotTerm) / 2;
+      const label = `S=${spot} r=${riskFreeRate} q=${dividendYield} T=${timeToExpiry}`;
+
+      expect(callGreeks(atKink).theta, label).toBeCloseTo(expected, 10);
+      expect(putGreeks(atKink).theta, label).toBeCloseTo(-expected, 10);
+
+      // And the boundary branch is the limit, not a value placed there. The probe is 1e-8 rather
+      // than anything smaller on purpose: at the kink, d1 divides a cancellation residual of
+      // order 1e-16 by sigma sqrt(T), so below about 1e-8 the analytic branch stops approaching
+      // the limit and starts moving away from it. See docs/MATH.md 6.2.
+      const budget = 1e-6 * Math.max(1, Math.abs(expected));
+      for (const greeks of [callGreeks, putGreeks]) {
+        const inside = greeks({ ...atKink, volatility: 1e-8 }).theta;
+        expect(Math.abs(inside - greeks(atKink).theta), `${label}: ${inside}`).toBeLessThan(budget);
+      }
     }
   });
 

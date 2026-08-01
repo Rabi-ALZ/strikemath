@@ -24,9 +24,10 @@ Rates and volatility are decimal fractions, not percentages: 5% is `0.05`.
 
 ---
 
-## 2. The two measures, kept apart
+## 2. The measures, kept apart
 
-This library deals with two different probability measures and never blurs them.
+This library deals with more than one probability measure and never blurs them. Two of them decide
+how a number may be read — Q and P — and a third one turns up inside delta.
 
 **Q — the risk-neutral measure.** Under Q the underlying drifts at `r - q`. Every price in this
 library is an expectation under Q. `N(d2)` is the Q-probability that a call finishes in the
@@ -60,9 +61,50 @@ present these numbers as likelihoods.
     premium — Bakshi & Kapadia (2003), Carr & Wu (2009), Bollerslev, Tauchen & Zhou (2009) — for the
     evidence and its limits.
 
-Where `N(d1)` appears it is also a probability, but under a different measure again — the one in
-which the underlying itself is the numéraire — which is why it is delta rather than a likelihood
-of anything. The library does not expose it as a probability.
+### 2.1 Delta is not the probability of finishing in the money
+
+`N(d1)` is a probability too, and of the **same event** as `N(d2)` — the option finishing in the
+money. What differs is the measure: `N(d1)` is that probability under the one in which the
+underlying itself, dividends reinvested, is the numéraire. The price has two legs, and each is
+settled in its own unit:
+
+```
+C = S e^(-qT) N(d1)   -   K e^(-rT) N(d2)
+    receive one share       pay K in cash
+      if in the money        if in the money
+```
+
+The cash leg is weighted by the probability seen from cash, which is Q. The share leg is weighted
+by the probability seen from shares. The two can never coincide, because `d1 - d2 = sigma sqrt(T)`
+is strictly positive, so `N(d1) > N(d2)` always. The change of measure has Radon-Nikodym derivative
+`S_T / E^Q[S_T]`, which is increasing in `S_T`: the share measure puts more weight on the high
+paths, and in the money _is_ the high paths.
+
+**Delta is neither of them.** `delta = e^(-qT) N(d1)`, not `N(d1)`, and the library never presents
+either as a probability.
+
+Reading a delta of 0.30 as "a 30% chance of finishing in the money" is a widespread shortcut, and
+it is wrong twice: wrong measure, and then wrong again by the dividend discount. Measured:
+
+| Contract                      | `sigma sqrt(T)` | `N(d2)` under Q | `N(d1)` share measure | `delta` | `delta - N(d2)` |
+| ----------------------------- | --------------- | --------------- | --------------------- | ------- | --------------- |
+| S=42 K=40 T=0.5 σ=0.20 q=0.03 | 0.1414          | 0.69909         | 0.74640               | 0.73529 | **+3.6 pp**     |
+| ATM, T=1/12, σ=0.20           | 0.0577          | 0.51151         | 0.53451               | 0.53451 | **+2.3 pp**     |
+| ATM, T=2, σ=0.60              | 0.8485          | 0.37071         | 0.69796               | 0.69796 | **+32.7 pp**    |
+| ATM, T=5, σ=1.50              | 3.3541          | 0.05289         | 0.95878               | 0.95878 | **+90.6 pp**    |
+
+The three ATM rows are `S = K = 100`, `r = 0.04`, `q = 0`; with `q = 0` the `N(d1)` and `delta`
+columns coincide, which is the point of keeping both.
+
+The error is not a rounding detail and it is not bounded by anything the reader can see. It widens
+with `sigma sqrt(T)` and tends to a full 100 points in the limit, because `d1 -> +infinity` while
+`d2 -> -infinity`. Row three is not exotic: a two-year at-the-money call on a name at 60%
+volatility has a delta of 0.70 and a Q-probability of finishing in the money of 0.37.
+
+At `q = 0` the two rightmost columns coincide and `delta = N(d1)` exactly — and the number is still
+a probability under the wrong measure. Delta is `dC/dS`, a hedge ratio. That it happens to equal a
+discount factor times a probability is a result inside the lognormal model, not a statement of what
+it is.
 
 ---
 
@@ -115,15 +157,73 @@ West publishes the branch point at 7.07106781186547 with a 5-level continued fra
 deviation buys relative accuracy in the tail; the reasoning and full measurements are in
 [DECISIONS.md](./DECISIONS.md).
 
-Measured against 40-digit ground truth:
+Measured against 40-digit ground truth, on a **dense** sweep rather than at the fixture points —
+the distinction turns out to matter, and why is the next subsection:
 
-| Region                          | Worst relative error |
-| ------------------------------- | -------------------- |
-| \|z\| < 3 (Hart's branch)       | 1.2e-14              |
-| \|z\| >= 3 (continued fraction) | 2.4e-16              |
+| Region                          | Worst relative error                                 |
+| ------------------------------- | ---------------------------------------------------- |
+| \|z\| < 3 (Hart's branch)       | 1.4e-14, at z = 2.98                                 |
+| \|z\| >= 3 (continued fraction) | see the floor below — the algorithm is not the limit |
 
 Absolute error is around 1e-16 or better everywhere. For pricing this is the number that matters,
 since `N` always enters multiplied by `S` or `K`.
+
+**The cost, measured rather than asserted.** The deeper continued fraction is not free. On this
+machine, per call: 19.2 ns against West's 17.0 ns inside Hart's branch (1.13x), and **157 ns
+against 19.9 ns on the tail branch — 7.9x**. That is still 6.4 million calls per second, and a
+whole `bsCall` near the money costs 72 ns, so the CDF is nowhere near being a bottleneck. But
+"the cost is nil" would be untrue, and a figure a reader can reproduce is worth more than a
+reassurance.
+
+#### The relative-accuracy floor in the tail, and why it is not the continued fraction
+
+Above the branch point the limit on relative accuracy is not the approximation at all. It is
+`Math.exp(-z*z/2)`. Since
+
+```
+d(exp(-u)) / exp(-u) = -du
+```
+
+any rounding in the **argument** `u = z^2/2` passes straight through as relative error in the
+result. Rounding `u` to a double costs up to `(z^2/2) * eps`, and that is what is measured:
+
+| Region   | Worst \|du\|, measured | Envelope `(z^2/2) eps` |
+| -------- | ---------------------- | ---------------------- |
+| [3, 5)   | 8.9e-16                | 2.8e-15                |
+| [5, 8)   | 1.8e-15                | 7.1e-15                |
+| [8, 12)  | 7.1e-15                | 1.6e-14                |
+| [12, 20) | 1.4e-14                | 4.4e-14                |
+| [20, 30) | 2.8e-14                | 1.0e-13                |
+| [30, 38) | 5.7e-14                | 1.6e-13                |
+
+The mechanism predicts the error rather than merely fitting it. Where `u` is exactly
+representable the relative error drops back to ~1e-16; where it is not, the error tracks `|du|`
+digit for digit:
+
+| z    | `u = z^2/2` | `u` exact? | \|du\|  | measured relative error |
+| ---- | ----------- | ---------- | ------- | ----------------------- |
+| 10   | 50          | yes        | 0       | 1.1e-16                 |
+| 11.5 | 66.125      | yes        | 0       | 1.2e-16                 |
+| 11.6 | 67.28       | **no**     | 5.3e-15 | **5.2e-15**             |
+| 11.8 | 69.62       | **no**     | 3.8e-15 | **3.7e-15**             |
+| 20   | 200         | yes        | 0       | 2.7e-16                 |
+
+**This document previously claimed 2.4e-16 here, and that figure was a measurement artefact.** It
+was taken at the reference fixture points, which are integers and half-integers — exactly the `z`
+for which `z^2/2` is exactly representable, and therefore exactly the measure-zero set on which
+this error vanishes. Convenient test points are systematically optimistic, because "easy to write
+down" correlates with "exactly representable".
+
+None of this touches the deviation from West, which is what the numbers are there to justify:
+West as published is ~1e-9 across this whole range, so the deviation still buys five to seven
+orders of magnitude. It is the stated figure that was wrong, not the choice.
+
+**A fix exists and is deliberately not taken.** Computing `z^2/2` in double-double arithmetic and
+splitting the exponential accordingly would restore ~1e-16 relative accuracy throughout. It is not
+implemented because it would improve nothing that matters: the **absolute** error is unchanged,
+and absolute error is what pricing consumes, since `N` always enters multiplied by `S` or `K`.
+Recorded here as a known, declined alternative — the same standing as log space in §9.1 — so that
+a future reader can see it was considered rather than missed.
 
 **There is no tail cutoff.** A cutoff at |z| = 37 is a common one, justified by `1 - Q(z)` being
 indistinguishable from 1 beyond it. That is true, and it says nothing about `Q` itself: `Q(37)` is
@@ -220,8 +320,41 @@ the analytic value by luck. Use enough steps that the answer is stable, not mere
 
 **`p` outside `[0, 1]`.** If the drift is large relative to `sigma sqrt(dt)`, the up and down
 moves cannot straddle the forward and the tree admits arbitrage. `crrPrice` throws rather than
-returning a number, since the number would be silently wrong. More steps normally resolves it:
-`p` stays inside `[0, 1]` while `sigma sqrt(dt) > |r - q| dt`, so shrinking `dt` helps.
+returning a number, since the number would be silently wrong.
+
+`p` stays inside `[0, 1]` while `sigma sqrt(dt) > |r - q| dt`, which rearranges to a step count:
+
+```
+n > T (|r - q| / sigma)^2
+```
+
+so shrinking `dt` always fixes it in principle. **In practice it sometimes cannot, because `steps`
+is capped at 20 000**, and the requirement above exceeds that cap whenever
+
+```
+sigma < |r - q| sqrt(T / 20 000)
+```
+
+This region reaches into the documented domain, which starts at `sigma = 0.001`. Measured, by
+bisecting on the volatility at which a 20 000-step tree starts to be accepted — the boundary is
+confirmed to within 1%, rejected at 0.99 times the predicted value and accepted at 1.01 times:
+
+| `r - q` | `T` | Steps needed | Unusable below   |
+| ------- | --- | ------------ | ---------------- |
+| 0.25    | 1   | 62 500       | `sigma` = 0.0018 |
+| 0.25    | 10  | 625 000      | `sigma` = 0.0056 |
+| 0.05    | 10  | 25 000       | `sigma` = 0.0011 |
+
+**A low-volatility contract with a large drift therefore has no valid tree at any legal step
+count**, and this is stated rather than left to be discovered: the error message names the step
+count that would be needed and says plainly when it is past the cap.
+
+The fallback is `bsPrice` and it is qualified, because the unqualified form is dangerous. For a
+European contract `bsPrice` is exact. For an **American** contract it is only a lower bound, and in
+this region a very poor one: at `S = 40`, `K = 100`, `T = 10`, `r = 0.25`, `sigma = 0.001` the
+European put is worth 0.00 while immediate exercise is worth 60.00. An American contract inside
+this region has no fallback in this library — the same honest gap as the one recorded in §9.1, and
+recorded here for the same reason.
 
 **Terminal nodes beyond the double range.** The highest terminal node sits at
 `S u^n = e^(ln S + sigma sqrt(T n))`. Past `ln(Number.MAX_VALUE)` it becomes `Infinity`, a call
@@ -311,9 +444,10 @@ boundary branch returns; the rows above it are the analytic branch converging on
 | **0**   | **0.4803947195761616** | **38.32995298410** | **48.03947195762** | **0**      | **0**    |
 
 Read the columns downwards. `delta`, `vega` and `rho` converge on the value the boundary branch
-reports. `theta` converges on 0 linearly in `sigma` — three decades of `sigma` buy three decades
-of `theta` — so 0 is its limit too. `gamma` is the exception: it grows as `1/sigma` without
-bound, so there is no finite value to report and 0 is what the boundary returns instead.
+reports. `gamma` is the exception: it grows as `1/sigma` without bound, so there is no finite
+value to report and 0 is what the boundary returns instead. `theta` appears to converge on 0 here,
+and on this contract it does — but that is a property of this contract and not of theta, which the
+next subsection takes up.
 
 A single probe would not have shown this. At `sigma = 1e-9` delta reads 0.4803947197678113, which
 differs from the reported 0.4803947195761616 in the tenth digit — not because the library is wrong
@@ -323,6 +457,66 @@ and only a sequence demonstrates it.
 The same holds approaching the other kink, `S = K`, `r = q = 0`, from `T > 0`: delta converges on
 0.5 rather than being placed there — 0.5039893563146316 at `T = 1e-2`, 0.5000039894228039 at
 `T = 1e-8`, 0.5000000398942281 at `T = 1e-12`.
+
+#### Theta at the kink is `(q - r) spotTerm / 2`, and 0 only when `r = q`
+
+At the kink `spotTerm = strikeTerm`, so as `sigma -> 0` the first term of theta,
+`-S e^(-qT) phi(d1) sigma / (2 sqrt(T))`, decays linearly in `sigma` while the other two converge
+on `N(0) = 1/2`:
+
+```
+theta -> q spotTerm / 2 - r strikeTerm / 2 = (q - r) spotTerm / 2
+```
+
+Measured at the kink, `S = 100`, `T = 1`, with `K` chosen so that `spotTerm = strikeTerm` to the
+bit:
+
+| `r`  | `q`  | `K`          | `theta` at `sigma = 1e-3` | `theta` at `sigma = 0` | `(q - r) spotTerm / 2` |
+| ---- | ---- | ------------ | ------------------------- | ---------------------- | ---------------------- |
+| 0.04 | 0.04 | 100          | -1.763e-2                 | 0                      | 0                      |
+| 0.05 | 0.01 | 104.08107742 | -1.9987                   | **-1.9801**            | -1.9801                |
+| 0.01 | 0.08 | 93.23938199  | +3.2142                   | **+3.2309**            | +3.2309                |
+
+With `r != q`, theta does not decay with `sigma` at all. Only its first term does, and the value
+that term decays towards is not 0. The table further up reads as though 0 were theta's limit
+because `r = q` there makes the two surviving terms cancel — one degeneracy hiding inside another.
+
+#### Reproducing this, and where the sequence turns around
+
+The demonstration above is a recipe, and the recipe has a floor. Below roughly `sigma = 1e-8` the
+analytic branch stops approaching the limit and begins moving away from it — on every contract
+except, as it happens, the one in the table.
+
+At the kink,
+
+```
+d1 = [ ln(S/K) + (r - q) T + sigma^2 T / 2 ] / (sigma sqrt(T))
+```
+
+and the bracket is exactly zero in exact arithmetic, because `spotTerm = strikeTerm` is the same
+statement as `ln(S/K) = -(r - q) T`. In floating point it is not zero but a cancellation residual
+of order 1e-16 — and that residual is then divided by `sigma sqrt(T)`. The error in `d1` therefore
+grows as `1/sigma` and eventually swamps the convergence it was meant to demonstrate.
+
+Measured, distance from the boundary value:
+
+| `sigma` | `r = q = 0.04` | `r = 0.05, q = 0.01`             |
+| ------- | -------------- | -------------------------------- |
+| 1e-6    | 1.92e-7        | 1.97e-7                          |
+| 1e-8    | 1.92e-9        | **5.48e-10** — closest approach  |
+| 1e-10   | 1.92e-11       | 1.37e-7                          |
+| 1e-12   | 1.92e-13       | 1.37e-5                          |
+| 1e-14   | 1.94e-15       | **1.37e-3** — worse than at 1e-3 |
+
+The contract in the first table is the one case where this cannot happen: with `S = K` and
+`r = q`, both `ln(S/K)` and `(r - q) T` are bitwise zero, so there is no residual to amplify. It
+was not chosen for that reason, which is precisely the problem — it concealed the floor while
+appearing to demonstrate the rule.
+
+**So probe down to about `sigma = 1e-8` and stop.** If you go further and watch the sequence
+diverge, you are seeing the conditioning of `d1`, not a defect in the boundary value: the boundary
+branch still sits within 5.5e-10 of the analytic branch's closest approach. This is worth knowing
+before you run the check on a contract of your own and conclude the library is wrong.
 
 **Why state it as a rule rather than as five values.** A rule is predictive. Vanna, charm, volga
 and speed all have their boundary behaviour already decided by it, and so does anything else added
@@ -346,13 +540,31 @@ This is the strongest structural identity in the library, because it ties `theta
 `delta` and the price into a single equation — a defect in any one of them breaks it, and it is
 not satisfiable by four values that are individually plausible.
 
-It is also what settles the unit convention, and settles it mechanically rather than by
-assertion. **Theta per year is the unit in which this identity holds without a conversion
-factor.** Measured residual across the documented domain: worst **1.0e-14** relative. With theta
-expressed per day instead, the same residual is **5.08**, **4.55** and **1.10** at three ordinary
-contracts — the identity simply fails. The convention is therefore enforced by
-`test/greeks.test.ts`, not merely promised here: anyone changing theta's unit breaks the PDE test
-by a factor of 365.
+The reason is dimensional, and the identity makes it mechanical rather than a matter of taste:
+`sigma` is annualised, `r` is per annum and `T` is in years, so every term above carries the unit
+_value per year_. Theta has to as well, or the equation does not balance.
+
+**Measured** on a dense grid of 36 000 contracts across the documented domain, deliberately at
+awkward values rather than round ones: worst **relative** residual **1.3e-15**.
+
+With theta expressed per day instead, the identity does not degrade — it fails by essentially the
+whole of theta. The identity says the other three terms sum to `-theta`, so substituting
+`theta / 365` leaves an **absolute** residual of
+
+```
+| theta / 365 - theta |  =  0.9973 |theta|
+```
+
+which is 4.29 at Hull's chapter 17 contract, 4.55 at example 13.6, and whatever `|theta|` happens
+to be on any other. Stating it as a fraction of theta rather than as three contract-specific
+numbers is the point: it is checkable on the contract in front of you.
+
+The convention is therefore enforced by `test/greeks.test.ts`, not merely promised here — one test
+asserts the identity holds, and a second asserts that the per-day version breaks it.
+
+**What this identity does not cover.** It constrains `theta`, `gamma`, `delta` and the price.
+`vega` and `rho` do not appear in it and get no support from it; their units rest on the
+convention in §6 and on the named scaling helpers, not on a structural check.
 
 ---
 
@@ -441,11 +653,44 @@ apart they are, so nothing in this library can detect a mismatch, and a figure c
 data and reported as "our VaR" is wrong by whatever scaling the reader assumed. State the horizon
 wherever the figure appears.
 
-Converting between horizons is not division. Under the usual independence assumption VaR scales
-with the square root of time — a one-day figure times sqrt(10) for ten days — and that assumption
-is least reliable exactly in the stressed markets where the number is being consulted. No helper
-for it is provided, deliberately: it would put a convenient number behind an inconvenient
-assumption.
+Converting between horizons is not division, and it is not a clean square root either. Under
+independence,
+
+```
+VaR_t = -mu t + sigma sqrt(t) z_c
+```
+
+so the **drift term scales linearly while the dispersion term scales with the square root**. The
+familiar "multiply by sqrt(10) for ten days" is therefore exact only where `mu = 0`, and nowhere
+else. Measured at 99% confidence, a one-day figure scaled by sqrt(10) against the correct ten-day
+figure:
+
+| Annual drift | Annual sigma | sqrt(10) rule | Correct ten-day | Error      |
+| ------------ | ------------ | ------------- | --------------- | ---------- |
+| 0%           | 20%          | 0.092684      | 0.092684        | 0.00%      |
+| 8%           | 20%          | 0.091680      | 0.089509        | **+2.43%** |
+| 15%          | 20%          | 0.090802      | 0.086732        | **+4.69%** |
+| -10%         | 30%          | 0.140281      | 0.142994        | **-1.90%** |
+
+On top of which the independence assumption is itself least reliable in exactly the stressed
+markets where the number is being consulted. No helper is provided, deliberately: it would put a
+convenient number behind two inconvenient assumptions rather than one.
+
+#### Why there is no `horizon` parameter, when there is a `thetaPerCalendarDay`
+
+This is the obvious objection, since the library closes precisely this class of hazard elsewhere:
+theta's unit is not a runtime setting but a named function, on the argument that a scaled number
+is indistinguishable from an unscaled one (§6, and DECISIONS 2026-07-29).
+
+The difference is ownership. **A unit can be enforced in the type system only where the library
+owns the fact.** The library computes theta, so it knows theta's unit exactly, and
+`thetaPerCalendarDay` is a verifiable transformation of something it produced itself. It never
+sees the sampling interval of a return series. A `horizon` field would be an unverifiable claim by
+the caller, echoed back with the library's authority attached — the library would appear to know
+something it cannot check, which is worse than saying plainly that it does not know.
+
+So the horizon is documented rather than typed, and that is the honest form of the same principle,
+not an exception to it.
 
 #### Sign convention
 
@@ -520,22 +765,57 @@ Property tests generate inputs from this domain, and the guarantees below are st
 | `q`      | `[0, 0.15]`         |
 
 **This bound is load-bearing, not a convenience.** Put-call parity is asserted at an _absolute_
-tolerance of 1e-9, while the parity residual scales with `S` and `K`. Measured residuals:
+tolerance of 1e-9, while the parity residual scales with `S` and `K`.
 
-| `S = K` | Residual |        |
-| ------- | -------- | ------ |
-| 1e4     | 3.6e-12  | passes |
-| 1e6     | 5.8e-11  | passes |
-| 1e12    | 1.2e-4   | fails  |
-| 1e15    | 6.3e-2   | fails  |
+Measured as the **worst residual over the documented ranges** of `T`, `r`, `sigma` and `q` at each
+scale. A single contract proves nothing here: at `S = K = 1e15` the median residual over those
+ranges is exactly 0 while the worst is 2.5e-1, so a lone probe can report either that the bound is
+unnecessary or that it is violated by a quarter.
+
+| `S = K`   | Worst residual |                  |
+| --------- | -------------- | ---------------- |
+| 1e4       | 2.0e-12        | passes           |
+| 1e6       | 2.3e-10        | passes           |
+| **4.7e6** | **9.3e-10**    | **the crossing** |
+| 1e9       | 2.4e-7         | fails            |
+| 1e12      | 2.4e-4         | fails            |
+
+The documented ceiling of 1e4 therefore carries **2.7 decades of margin** before the assertion
+becomes unsatisfiable. The bound is load-bearing, and it is not tight.
 
 Without the bound, generation reaches `S = K = 1e12` and the assertion fails by construction —
 which would be a domain error, not a mathematics error. If a property ever fails inside the
 domain, the correct response is to narrow the documented domain and say so, never to widen the
 tolerance.
 
-Inputs outside this domain are not rejected — the functions still validate and compute — but the
-accuracy statements above are only claimed inside it.
+Inputs outside this domain are not rejected — the functions still validate and compute — but
+**every** guarantee above is claimed only inside it, and that includes the guarantee of a finite
+answer, not merely the accuracy figures.
+
+### 9.0 Outside the domain: what actually breaks, and why one parameter at a time never finds it
+
+Inside the domain the library returns no `NaN` and no `Infinity`, and that is a property test
+rather than a promise. Outside, two mechanisms produce both. Each needs **two** extremes at once:
+
+| Output  | Mechanism                                                                       | Example                          | Result        |
+| ------- | ------------------------------------------------------------------------------- | -------------------------------- | ------------- |
+| `gamma` | `e^(-qT) phi(d1) / (S sigma sqrt(T))`, numerator and denominator both underflow | `S=1e-320, sigma=1e-320, T=1`    | **NaN**       |
+| `gamma` | the same denominator underflows on its own                                      | `S=1e-320, sigma=1e-8, T=1e-320` | **Infinity**  |
+| `theta` | `-S e^(-qT) phi(d1) sigma / (2 sqrt(T))` overflows                              | `S=1, sigma=1e150, T=1e-320`     | **-Infinity** |
+
+`gamma` is affected for spots up to about 1e-8. `theta` is affected at **any** spot, up to
+`Number.MAX_VALUE`, because it is `sigma` and `T` that drive it and the spot is only a factor.
+
+**Neither is reachable by varying one input at a time.** `S = 1e-320` on its own is fine.
+`sigma = 1e-320` on its own is fine. Together they are `NaN`. Varying one parameter while holding
+the others at sensible values is the natural way to probe a boundary, and it is systematically
+blind to exactly this: every individual limit looks safe, because individually it is safe.
+
+**No fix is applied, deliberately.** `gamma -> infinity` as `S -> 0` is the true limit, and
+validating it away would replace a mathematically correct answer with an error. Rejecting these
+inputs would also break the stated design that out-of-domain inputs are computed rather than
+refused. What was wrong was the claim, not the arithmetic — the README asserted no `NaN`
+unconditionally while the property test that backed it drew only from this domain.
 
 ### 9.1 An extra constraint on `crrPrice`
 

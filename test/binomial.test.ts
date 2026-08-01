@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { crrPrice } from '../src/pricing/binomial.js';
-import { bsCall, bsPut } from '../src/pricing/blackScholes.js';
+import { bsCall, bsPrice, bsPut } from '../src/pricing/blackScholes.js';
 import { InvalidInputError } from '../src/utils/validate.js';
 import type { OptionInputs } from '../src/utils/types.js';
 
@@ -326,6 +326,78 @@ describe('validation', () => {
         steps: 5,
       }),
     ).toThrow(/probability/i);
+  });
+
+  it('names a step count that actually works when one exists', () => {
+    // "Increase steps" is only advice if the caller can act on it, so the message names the
+    // number. The number must be right: `n > T (|r - q| / sigma)^2` gives 1562.5 here, so 1562
+    // must still fail and 1563 must succeed. An off-by-one would send the caller back into the
+    // same error — the failure mode that `maxRepresentableSteps` was corrected for in review.
+    const contract = {
+      spot: 100,
+      strike: 100,
+      timeToExpiry: 10,
+      riskFreeRate: 0.25,
+      volatility: 0.02,
+      optionType: 'put',
+      exerciseStyle: 'american',
+    } as const;
+
+    let advised = 0;
+    try {
+      crrPrice({ ...contract, steps: 50 });
+      expect.unreachable('the tree should have been refused at 50 steps');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toMatch(/Raise steps to at least (\d+)\./);
+      advised = Number(/Raise steps to at least (\d+)\./.exec(message)?.[1]);
+    }
+
+    expect(advised).toBe(1563);
+    expect(() => crrPrice({ ...contract, steps: advised - 1 })).toThrow(/probability/i);
+    expect(crrPrice({ ...contract, steps: advised })).toBeGreaterThan(0);
+  });
+
+  it('says plainly when no legal step count works, and qualifies the fallback', () => {
+    // Below `sigma = |r - q| sqrt(T / 20000)` the required step count is past the cap, so
+    // "increase steps" is a dead end and the message must say so rather than repeat it.
+    //
+    // The fallback has to name European explicitly. bsPrice is exact for a European contract and
+    // only a lower bound for an American one: on this contract at spot 40 it returns 0 for a put
+    // that can be exercised immediately for 60.
+    let message = '';
+    try {
+      crrPrice({
+        spot: 40,
+        strike: 100,
+        timeToExpiry: 10,
+        riskFreeRate: 0.25,
+        volatility: 0.001,
+        optionType: 'put',
+        exerciseStyle: 'american',
+        steps: 20_000,
+      });
+      expect.unreachable('the tree should have been refused');
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toMatch(/No legal step count works/);
+    expect(message).toMatch(/625001 steps would be needed/);
+    expect(message).toMatch(/European contract use bsPrice/);
+    expect(message).toMatch(/American contract in this region has no fallback/);
+
+    // And the reason the qualification is load-bearing, asserted rather than described.
+    const european = bsPrice({
+      spot: 40,
+      strike: 100,
+      timeToExpiry: 10,
+      riskFreeRate: 0.25,
+      volatility: 0.001,
+      optionType: 'put',
+    });
+    expect(european).toBe(0);
+    expect(100 - 40).toBeGreaterThan(european);
   });
 
   it('rejects the same invalid inputs as the analytic pricer', () => {

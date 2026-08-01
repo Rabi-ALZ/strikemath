@@ -209,13 +209,13 @@ describe('the boundary rule', () => {
       // what the analytic branch converges on, with gamma the sole exception because its limit
       // diverges. A defect in either branch surfaces here as a discontinuity in the library's own
       // output — which is exactly how vega was caught returning 0 where the limit is 39.894.
-      const probe = 1e-9;
+      const probe = 1e-8;
 
       // The probe only reveals the limit if it can tell which side of the kink the contract is
       // on. That needs |ln(spotTerm / strikeTerm)| to dominate sigma sqrt(T): inside that band
       // the analytic branch is still reporting the kink value while the boundary branch has
       // already resolved the strict inequality, and the two legitimately differ. A strike one ulp
-      // above the spot is out of the money, its limit is 0, and no probe at 1e-9 can see that.
+      // above the spot is out of the money, its limit is 0, and no probe this coarse can see it.
       const spotTerm = inputs.spot * Math.exp(-(inputs.dividendYield ?? 0) * inputs.timeToExpiry);
       const strikeTerm = inputs.strike * Math.exp(-inputs.riskFreeRate * inputs.timeToExpiry);
       const moneyness = Math.abs(Math.log(spotTerm / strikeTerm));
@@ -227,11 +227,16 @@ describe('the boundary rule', () => {
       const boundary = optionType === 'call' ? callGreeks(atBoundary) : putGreeks(atBoundary);
       const inside = optionType === 'call' ? callGreeks(justInside) : putGreeks(justInside);
 
-      // Each Greek has its own natural magnitude, and the probe at sigma = 1e-9 is still a
-      // finite distance from the limit — theta, for instance, converges linearly in sigma, so at
-      // S = K = 1 its value there is around 1e-9 while the limit is 0. Judging every Greek
-      // against one absolute floor would either hide a real discontinuity in delta or flag that
-      // convergence in theta. The floor is therefore the Greek's own scale.
+      // Each Greek has its own natural magnitude, and the probe is still a finite distance from
+      // the limit — theta, for instance, converges linearly in sigma, so at S = K = 1 its value
+      // there is around 1e-8 while the limit is 0. Judging every Greek against one absolute floor
+      // would either hide a real discontinuity in delta or flag that convergence in theta. The
+      // floor is therefore the Greek's own scale.
+      //
+      // The probe is 1e-8 and not smaller because the sequence turns around below that: at the
+      // kink, d1 divides a cancellation residual of order 1e-16 by sigma sqrt(T), so the analytic
+      // branch moves away from the limit as sigma shrinks past roughly 1e-8. A probe at 1e-12
+      // would be measuring that divergence rather than the convergence. See docs/MATH.md 6.2.
       const naturalScale = {
         delta: 1,
         vega: inputs.spot * Math.sqrt(inputs.timeToExpiry),

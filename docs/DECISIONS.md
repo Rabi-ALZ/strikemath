@@ -385,3 +385,175 @@ the identity holds without a conversion factor: with theta expressed per day the
 5.08, 4.55 and 1.10 at three ordinary contracts. Anyone changing theta's unit now breaks a test by
 a factor of 365 rather than quietly making the documentation wrong. That is the difference between
 a convention that is written down and one that is held in place.
+
+---
+
+## 2026-08-01 — The tail accuracy figure was a measurement artefact; this supersedes "2.4e-16"
+
+The entry above on deviating from West's constants reports the worst relative error above the
+branch point as **2.4e-16**, and `docs/MATH.md` §3.4 repeated it. **That figure is wrong, and the
+way it was wrong is the part worth recording.**
+
+It was measured at the reference fixture points. Those points are integers and half-integers,
+because those are the values a person writes down when choosing test inputs. For exactly those
+`z`, `z^2/2` is exactly representable as a double. And `z^2/2` is the argument to
+`Math.exp(-z*z/2)`, where
+
+```
+d(exp(-u)) / exp(-u) = -du
+```
+
+so any rounding of the argument passes through as relative error in the result. The measurement
+was therefore taken on precisely the measure-zero set where this error term vanishes, and the
+result was reported as holding *anywhere on the line*.
+
+Measured on a dense sweep with exact BigInt comparison, the worst relative error is **5.2e-15 at
+z = 11.6**, twenty-two times the figure claimed, and it follows the envelope `(z^2/2) * eps`:
+8.9e-16 on [3, 5), 7.1e-15 on [8, 12), 5.7e-14 on [30, 38). The mechanism predicts the data rather
+than fitting it — where `u` is exactly representable the error drops back to ~1e-16, and where it
+is not it tracks `|du|` digit for digit. The full tables are in `docs/MATH.md` §3.4.
+
+The corresponding figure inside Hart's branch was also slightly optimistic: 1.2e-14 claimed,
+1.4e-14 measured at z = 2.98, in the location the entry above already identified correctly.
+
+**What is unaffected.** The decision to deviate from West stands entirely. West as published is
+~1e-9 across this range; the floor here is ~1e-14. The deviation still buys five to seven orders
+of magnitude, and every number in the comparison table of the entry above reproduces exactly. Only
+the summary figure for the shipped implementation was wrong.
+
+**The lesson, which generalises past this library.** Twice now the project's own measuring
+instrument has been the defect rather than the thing measured — first the reference generator's
+working precision, where too few digits produced a number that was wrong by 3.5e-4 while still
+looking like a number, and now the choice of measurement points. Both were wrong answers that
+looked like answers.
+
+The common cause here has a name: **convenient test points are systematically optimistic.** The
+values that are easy to write down — integers, halves, round decimals — correlate with being
+exactly representable, and exact representability correlates with floating point behaving at its
+best. A test grid chosen for legibility is a test grid chosen, without anyone intending it, for
+flattery.
+
+This is the third instance of the same shape in the documentation: a probe presented as a limit
+(§6.2, corrected 2026-07-30), a single contract presented as a function of scale (§9, corrected
+2026-08-01), and now a favourable subset presented as a claim over the whole line. The pattern is
+recorded in `.claude/agents/quant-verifier.md` as a boundary check of its own.
+
+**Declined, and recorded so it reads as a decision rather than an omission.** Computing `z^2/2` in
+double-double arithmetic would restore ~1e-16 relative accuracy throughout. It is not implemented
+because the **absolute** error is unchanged by it, and absolute error is what pricing consumes —
+`N` always enters multiplied by `S` or `K`. Same standing as log space for the binomial tree.
+
+**And the performance claim was never measured.** The entry above says the deeper continued
+fraction "costs about 60 divisions on a branch that only deep out-of-the-money inputs reach", and
+MATH.md said the cost was nil. Measured: 19.2 ns against West's 17.0 ns inside Hart's branch
+(1.13x), and **157 ns against 19.9 ns on the tail branch — 7.9x**. That is still 6.4 million calls
+per second against a whole `bsCall` at 72 ns, so the conclusion holds and the CDF is a bottleneck
+nowhere. But "nil" was an assertion, and it is now a figure a reader can reproduce.
+
+---
+
+## 2026-08-01 — Three figures in the Hart/West entry were wrong; this supersedes them
+
+The entry of 2026-07-29 on choosing Hart/West over Abramowitz & Stegun contains three measured
+numbers that do not reproduce. All three are corrected here rather than edited there.
+
+**1. Put-call parity under A&S: 1.8e-12 claimed, 1.0e-5 measured.** Seven orders of magnitude, and
+the mechanism is exact. A&S 26.2.17 evaluates its upper tail at `z = 0` as `0.5 - 5.25e-10` rather
+than `0.5`, because its coefficients sum to 1.253314136 where `sqrt(pi/2)` is 1.2533141373155003.
+The reflection `N(x) = x >= 0 ? 1 - Q(x) : Q(-x)` is exact for every `x` except **zero itself**,
+where both branches take the `x >= 0` path and the error does not cancel. So at any contract with
+`d2 = 0` exactly, parity fails by `strikeTerm * 1.05e-9` — 1.0e-5 at `S = K = 10 000`.
+
+The measurement grid behind the original figure never contained such a contract. The corrected one
+did, and only by coincidence: it happened to include `r - q = 0.02` alongside `sigma = 0.2`, and
+`sigma^2 / 2 = 0.02` puts `d2` exactly on zero.
+
+**The decision is not weakened by this; it is better founded.** The entry concluded that "the
+ordering between them is noise", and that sentence is now false. Hart/West is not merely more
+accurate in the tail — it is structurally safe at `d2 = 0`, where A&S's reflection breaks, because
+`normalCdf(0) === 0.5` holds exactly here and the identity `N(0) + N(-0) = 1` is bitwise.
+
+**2. `N(-10.4)` is 1.240e-25, not 1.04e-25.** A 19% error, in the round-one entry describing the
+complement defect. The conclusion — that `1 - N(d2)` returns a hard 0 where the direct tail returns
+a representable number — is unaffected.
+
+**3. Gamma "returns 3.99e297 just above the boundary".** 3.99e297 is the value at
+`sigma = 1e-300`. At the boundary proper — `sigma = 5e-324`, the smallest denormal — gamma is
+`Infinity`. Which strengthens the argument for reporting 0 rather than weakening it.
+
+**Why this entry matters more than the three corrections in it.** Number 1 is the same defect as
+every other one found in this review: a grid chosen for legibility, missing the degenerate point.
+It occurred **in the entry that establishes the library's thesis** — the document whose purpose is
+to show that this project measures rather than asserts. Number 2 is a 19% recall error in the entry
+whose own stated lesson is that "several values recalled from memory during initial drafting were
+wrong in the last one or two digits. That is the reason this generator exists."
+
+That is not irony, and it is not carelessness. It is evidence that **the pattern is stronger than
+awareness of it**. Knowing that convenient numbers are dangerous does not stop anyone writing them
+down. Only measuring does.
+
+---
+
+## 2026-08-01 — A ten-question review of the documentation, and what the ratio says
+
+Every convention in `docs/MATH.md` and `README.md` was worked through as ten questions a quant
+would ask, each answered by measurement rather than by reading. The result: **sixteen defects, and
+all but one of them in the claims rather than in the code.**
+
+Recorded because the ratio is the finding. Across two earlier rounds, adversarial review of `/src`
+produced nine defects in the mathematics. This pass produced sixteen in the description of that
+mathematics — while the code itself needed exactly one behavioural change, to an error message.
+
+**The code held. What was written about the code did not.** Prose has no test suite, and that is
+where the risk sits.
+
+### The two patterns underneath
+
+**Convenient points and convenient special cases.** Seven instances. The reference fixtures are
+integers and half-integers, which is exactly where `z^2/2` is exactly representable, so the tail
+accuracy figure was measured on the measure-zero set where the error vanishes. §6.2's boundary
+table used `r = q = 0.04` and `S = K = 100` — three degeneracies at once, one of which made theta's
+limit 0 by coincidence and hid that it is `(q - r) spotTerm / 2`. §9's parity table was one
+contract presented as a function of scale. The VaR square-root-of-time rule is exact only at zero
+drift. And the A&S parity figure above.
+
+The root is a single sentence: **simplicity in notation correlates with degeneracy in the
+mathematics.** The values a person writes down are the values at which floating point behaves best
+and at which terms cancel. A grid chosen for legibility is a grid chosen, unintentionally, for
+flattery.
+
+**Recipes that outlive the fix.** Four instances, and this class is worse per occurrence, because
+the error migrates into the reader's code where nothing here can catch it. `1 - N(d2)` was removed
+from the source in round one and survived in a JSDoc block as advice to callers — wrong at the
+degenerate kink, and discarding 7.5e-21 as a hard 0 deep in the money. §6.2 taught a convergence
+probe at `sigma = 1e-12`, past the point where the sequence turns around. `crrPrice` told callers to
+"increase steps" where no legal step count exists, and to "use the analytic pricer", which returns
+0.00 for an American put worth 60.00 — while its sibling message twelve lines away was correctly
+qualified. And the README promised no `NaN` unconditionally while the property test behind it drew
+only from the documented domain.
+
+The root here is different: **correct knowledge existed in the repository and failed to travel.**
+The same shape as the `-0` guard that was applied in `boundaryGreeks` and not in `historicalVar`.
+
+### The method that worked, and is now in the verifier
+
+- **Try to refute the document's own claim, and design the experiment so it can succeed.** Two CDFs
+  with identical 7.45e-8 error, one with a consistent reflection and one without: parity perfect in
+  the first, broken 2000-fold in the second. That is a proof, not an illustration.
+- **Mutation testing for coverage gaps.** Implementing the wrong claim — theta forced to 0 at the
+  kink — passed all 176 tests, eight runs out of eight, while a broader mutation failed at once.
+  Reading produces a hypothesis; mutating produces evidence.
+- **Sweep a product of extremes, not a list of them.** `gamma` is `NaN` at `S = 1e-320` with
+  `sigma = 1e-320` while either alone is harmless. One parameter at a time is blind to this by
+  construction.
+- **State mechanisms, not figures.** A number is falsified by the next measurement; a mechanism
+  explains all of them and lets the reader check their own case. The tail floor is now
+  `(z^2/2) eps`, the per-day PDE failure is `0.9973 |theta|`, and the unusable tree region is
+  `sigma < |r - q| sqrt(T / 20000)`.
+
+### What changed in the code
+
+One behavioural change: `crrPrice`'s risk-neutral-probability error now computes the step count
+that would be needed, says plainly when that exceeds the cap, and qualifies the `bsPrice` fallback
+to European contracts. Everything else was documentation, JSDoc and tests. The suite went from 175
+to 179, coverage stayed at 100% of statements, branches, functions and lines.

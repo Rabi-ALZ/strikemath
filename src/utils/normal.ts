@@ -36,9 +36,14 @@ const INV_SQRT_2PI = 1 / SQRT_2PI;
  * ground truth, the published form is off by 2.6e-9 at z = 7 and 8.7e-9 at z = 8.
  *
  * Lowering the branch point to 3 and deepening the continued fraction to 60 levels costs about
- * 60 divisions on a branch that only deep out-of-the-money inputs reach, and brings the worst
- * relative error anywhere on the line to 1.2e-14 (at z just under 3, in Hart's branch) and to
- * 2.4e-16 above it. See docs/DECISIONS.md for the measurements and the reasoning.
+ * 60 divisions on a branch that only deep out-of-the-money inputs reach, and buys five to seven
+ * orders of magnitude of relative tail accuracy over the published form.
+ *
+ * Above the branch point the limit is no longer this approximation. It is the rounding of
+ * `z * z / 2` in the exponential, which passes through as relative error because
+ * `d(exp(-u))/exp(-u) = -du`. The measurements, the envelope and the reason a double-double fix
+ * is declined are in docs/MATH.md §3.4, and the figures are deliberately not restated here — an
+ * earlier copy of them in this comment drifted out of date and stayed wrong.
  */
 const BODY_LIMIT = 3;
 

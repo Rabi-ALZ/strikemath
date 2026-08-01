@@ -52,7 +52,69 @@ For each, ask whether the result is the correct limit, and whether any intermedi
 
 **Numerical stability.** Catastrophic cancellation between terms of similar magnitude. Division
 by a quantity that approaches zero. `exp` of a large argument. Loss of relative precision in a
-tail. Any comparison of floating-point values for exact equality that decides a branch.
+tail. Any comparison of floating-point values for exact equality that decides a branch. Rounding
+in the **argument** of an `exp`, which passes through as relative error in the result, since
+`d(exp(-u))/exp(-u) = -du`.
+
+**After a defect is fixed in `/src`, search the documentation for the same claim in imperative
+form.** A fix that survives as an instruction is worse than the original defect, because it has
+become reproductive: it migrates out of this repository and into the caller's code, where no test,
+no coverage report and no reviewer here will ever see it fail.
+
+Grep for the _pattern_, not the function name — `1 -`, `you can compute`, `take`, `multiply by`,
+`approaches`, `converges`. Two live examples were found this way: `1 - N(d2)` was removed from the
+source in review and survived in a JSDoc block as advice to callers, and a convergence recipe told
+readers to probe to `sigma = 1e-12` where the sequence has already turned around.
+
+Every sentence of the form "if this throws, do X instead" is a recipe, and recipes are code that
+runs in someone else's process. Check that X is actually correct, on a contract you construct
+yourself, rather than that it sounds reasonable.
+
+**When you find a correctly qualified statement, go looking for its siblings.** A qualification
+present in one of two relevant places is a defect waiting in the other, and this repository has
+produced the failure three times: the `-0` guard was applied in `boundaryGreeks` and not in
+`historicalVar`; one `crrPrice` error message said "price a **European** contract with bsPrice"
+while its sibling twelve lines away said only "use the analytic pricer", which returns 0.00 for an
+American put worth 60.00; and the tail-accuracy figure was corrected in one file and left standing
+in four others.
+
+The pattern is not carelessness. Correct knowledge existed in the repository and failed to
+travel. So when a guard, a caveat or a qualification is right somewhere, enumerate every other
+site where the same hazard applies and check each one by name.
+
+**A guarantee checked one parameter at a time does not cover interactions.** Varying a single
+input while holding the others at sensible values is the natural way to probe a boundary, and it is
+systematically blind to defects that need two extremes at once — which is precisely the class that
+survives review, because every individual limit looks safe and individually is safe.
+
+So when a claim quantifies over all inputs, sweep a **product** of extremes rather than a list of
+them. This library's `gamma` returns `NaN` at `S = 1e-320` with `sigma = 1e-320`, while either
+value alone is harmless, and its `theta` returns `-Infinity` for a large `sigma` at a small `T` at
+any spot at all. Neither is reachable one axis at a time.
+
+**Are the measurement points representative, or merely convenient?** This applies to any accuracy
+figure claimed in the code, the tests or the documentation, and it has already produced three real
+defects in this library.
+
+Convenient test points are systematically optimistic. The values a person writes down — integers,
+half-integers, round decimals — correlate with being exactly representable as doubles, and exact
+representability correlates with floating point behaving at its best. A grid chosen for legibility
+is a grid chosen, unintentionally, for flattery.
+
+So when a claim of the form "worst error is X" appears, check:
+
+- Was it measured on a dense sweep, or at a handful of named points?
+- Is there a reason those particular points would be favourable? Ask specifically whether any
+  intermediate quantity — `z^2/2`, `sigma sqrt(T)`, `ln(S/K)` — happens to be exact at them.
+- Does the claim quantify over a continuum ("anywhere on the line", "across the domain") while the
+  evidence is a finite list?
+- Is a single probe standing in for a limit, or for a distribution? A sequence demonstrates
+  convergence; one point demonstrates nothing. If the claim is about a worst case, the median is
+  not evidence for it, and vice versa.
+
+Report the artefact as a defect. A wrong number that still looks like a number is the failure mode
+this project keeps meeting, and it has twice been in the measuring instrument rather than in the
+code being measured.
 
 **Structural identities.** These must hold to machine precision, and a failure in one is a real
 defect rather than an accuracy question:
@@ -70,6 +132,25 @@ defect rather than an accuracy question:
 `pnpm test`, to produce an actual number before you claim a defect exists. A finding backed by
 output is worth reporting; a finding backed by reasoning alone is a hypothesis you have not
 finished checking.
+
+**When you suspect a case is untested, implement the defect and see whether the suite notices.**
+Reading the tests produces a hypothesis about coverage; mutating the source produces evidence.
+Write the wrong behaviour into `/src`, run `pnpm test` several times — the property tests draw a
+fresh seed each run, so a single green is not a result — and restore the file afterwards with
+`git checkout` or a copy taken first.
+
+Two rules make this conclusive rather than suggestive:
+
+- **Mutate precisely.** A broad mutation ("return 0 always") usually fails somewhere, and tells
+  you nothing about the case you care about. Mutate the exact branch under suspicion.
+- **Run the control.** If the precise mutation survives, also try a broad one. A broad mutation
+  that fails proves the suite is alive and locates the hole; a broad mutation that also survives
+  means the whole area is unguarded, which is a larger finding.
+
+This is how the gap in theta at the kink was established: the precise mutation — theta forced to 0
+when the forward sits exactly on the strike — passed 176 tests eight runs out of eight, while the
+broad one failed immediately on an ordinary in-the-money boundary case. Reading alone would have
+produced only a suspicion.
 
 ## What not to flag
 
