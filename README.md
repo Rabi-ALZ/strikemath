@@ -58,7 +58,7 @@ These assertions are never weakened. If one fails, the code is wrong — not the
 generated in BigInt fixed-point arithmetic at adaptive precision, with pi computed from Machin's
 formula so that not even that constant is taken on trust. The generator cross-checks every value
 at two working precisions and refuses to emit one where they disagree. Worst measured relative
-error below |z| = 3: **1.4e-14**. Above it the approximation is no longer the limit — the rounding
+error below |z| = 3: **1.6e-14**, rising monotonically into the branch point. Above it the approximation is no longer the limit — the rounding
 of `z²/2` inside the exponential is — while the published 5-level form is five to seven orders of
 magnitude worse across the same range. An earlier version of this README claimed a better tail
 figure; it had been measured at integer and half-integer points, which are exactly the ones where

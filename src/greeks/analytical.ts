@@ -55,15 +55,22 @@ export interface GreeksInputs extends OptionInputs {
  * on exactly the values below. At the kink `spotTerm = strikeTerm` forces `d1 = sigma sqrt(T) / 2`,
  * which tends to 0, so `N(d1) -> 0.5` and `phi(d1) -> phi(0)`.
  *
- * Measured at the kink, S = K = 100, r = q = 0.04, T = 1, as sigma tends to 0:
+ * Measured at the kink, S = K = 100, r = q = 0.04, T = 1. The middle column is the analytic
+ * branch at sigma = 1e-7 — a probe approaching the limit, not the limit itself:
  *
- * | Greek | limit from inside | reported |
- * |-------|-------------------|----------|
- * | delta | 0.4803947187      | 0.4803947196 |
- * | vega  | 38.32995298410409 | 38.32995298410414 |
- * | rho   | 48.0394700411     | 48.0394719576 |
+ * | Greek | analytic at sigma = 1e-7 | reported at sigma = 0 |
+ * |-------|--------------------------|-----------------------|
+ * | delta | 0.4803947387411380       | 0.4803947195761616 |
+ * | vega  | 38.32995298410409        | 38.32995298410414 |
+ * | rho   | 48.0394700411            | 48.0394719576 |
  * | theta | -> 0, linearly in sigma (-1.76e-2 at 1e-3, -1.76e-11 at 1e-12) | 0 |
  * | gamma | -> infinity as 1/sigma (3.8e0 at 1e-3, 3.8e9 at 1e-12) | 0 — the exception |
+ *
+ * Theta's limit is 0 **here only because r = q**. In general it is `(q - r) spotTerm / 2`, which
+ * is -1.98 at the kink with r = 0.05 and q = 0.01. Do not read this row as a property of theta.
+ *
+ * Do not probe below about sigma = 1e-8 to check this: `d1` divides a cancellation residual of
+ * order 1e-16 by sigma sqrt(T), so the analytic branch turns around and moves away from the limit.
  *
  * The rule is what makes this predictable: any Greek added later has its boundary behaviour
  * already determined. See docs/MATH.md §6.2.

@@ -270,6 +270,51 @@ describe('validation', () => {
       }),
     ).toThrow(ConvergenceError);
   });
+
+  it('never returns a volatility that misses priceTolerance, even when the bracket collapses', () => {
+    // The module's guarantee is that a returned volatility reproduces the input price to within
+    // priceTolerance, and that failure is always an exception. Below roughly one ulp of the price
+    // that tolerance is unreachable at any iteration count, because dSigma = dPrice / vega and the
+    // bracket bottoms out at the resolution of a double.
+    //
+    // The early return on bracket collapse used to hand back the midpoint without checking. At
+    // S = K = 10 000 with a tolerance of 1e-14, 32 of these 40 targets returned silently outside
+    // tolerance, the worst by 205x. This asserts the guarantee itself rather than one case: every
+    // returned value is inside tolerance, and every failure is a ConvergenceError.
+    const contract = { spot: 10_000, strike: 10_000, timeToExpiry: 1, riskFreeRate: 0.05 };
+    const priceTolerance = 1e-14;
+    const view = new DataView(new ArrayBuffer(8));
+
+    let optionPrice = bsCall({ ...contract, volatility: 0.3 });
+    let refused = 0;
+
+    for (let step = 0; step < 40; step += 1) {
+      try {
+        const volatility = impliedVolatility({
+          ...contract,
+          optionPrice,
+          optionType: 'call',
+          priceTolerance,
+        });
+        const residual = Math.abs(bsCall({ ...contract, volatility }) - optionPrice);
+
+        expect(residual, `sigma ${volatility} at price ${optionPrice}`).toBeLessThanOrEqual(
+          priceTolerance,
+        );
+      } catch (error) {
+        expect(error, `at price ${optionPrice}`).toBeInstanceOf(ConvergenceError);
+        expect((error as Error).message).toMatch(/resolution of a double|did not converge/);
+        refused += 1;
+      }
+
+      view.setFloat64(0, optionPrice);
+      view.setBigUint64(0, view.getBigUint64(0) + 1n);
+      optionPrice = view.getFloat64(0);
+    }
+
+    // And the refusals are real, not a vacuous pass: this tolerance is genuinely unreachable here.
+    expect(refused).toBeGreaterThan(0);
+  });
 });
 
 describe('property: the solver inverts the pricer over the documented domain', () => {

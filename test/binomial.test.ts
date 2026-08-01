@@ -343,19 +343,62 @@ describe('validation', () => {
       exerciseStyle: 'american',
     } as const;
 
-    let advised = 0;
-    try {
-      crrPrice({ ...contract, steps: 50 });
-      expect.unreachable('the tree should have been refused at 50 steps');
-    } catch (error) {
-      const message = (error as Error).message;
-      expect(message).toMatch(/Raise steps to at least (\d+)\./);
-      advised = Number(/Raise steps to at least (\d+)\./.exec(message)?.[1]);
+    // Both an integral and a non-integral ratio. The first version of this test used only
+    // sigma = 0.02, where the ratio is 1562.5 — and `floor(x) + 1` and `ceil(x)` agree on every
+    // non-integral x, so the off-by-one it was written to catch was invisible to it. An integral
+    // ratio is the whole test.
+    const ratioOf = (volatility: number) =>
+      (contract.timeToExpiry * contract.riskFreeRate ** 2) / volatility ** 2;
+
+    // At least one row must have an exactly integral ratio, or this test cannot see the defect
+    // it exists for. Note that 0.05 does NOT qualify: the ratio there is 249.99999999999994.
+    expect([0.02, 0.125, 0.05].filter((v) => Number.isInteger(ratioOf(v)))).toEqual([0.125]);
+
+    for (const [volatility, expected] of [
+      [0.02, 1563],
+      [0.125, 40],
+      [0.05, 250],
+    ] as const) {
+      const inputs = { ...contract, volatility };
+
+      let advised = 0;
+      try {
+        crrPrice({ ...inputs, steps: 1 });
+        expect.unreachable(`the tree should have been refused at sigma ${volatility}`);
+      } catch (error) {
+        const message = (error as Error).message;
+        expect(message, message).toMatch(/Raise steps to at least (\d+)[,.]/);
+        advised = Number(/Raise steps to at least (\d+)[,.]/.exec(message)?.[1]);
+      }
+
+      expect(advised, `sigma ${volatility}`).toBe(expected);
+      expect(() => crrPrice({ ...inputs, steps: advised - 1 })).toThrow(/probability/i);
+
+      // Accepted, and finite. Not asserted to be positive: at an integral ratio the named count
+      // puts `p` at exactly 1, so the up move is the forward, the tree carries no dispersion and
+      // every path lands there. A put on a forward far above the strike is then correctly 0. The
+      // named count is a floor on validity, not a recommendation, and the message says so.
+      const atFloor = crrPrice({ ...inputs, steps: advised });
+      expect(Number.isFinite(atFloor), `sigma ${volatility}: ${atFloor}`).toBe(true);
+      expect(atFloor).toBeGreaterThanOrEqual(0);
+
+      // Well above the floor the tree has dispersion again and the put is worth something.
+      expect(crrPrice({ ...inputs, steps: advised * 4 })).toBeGreaterThan(0);
     }
 
-    expect(advised).toBe(1563);
-    expect(() => crrPrice({ ...contract, steps: advised - 1 })).toThrow(/probability/i);
-    expect(crrPrice({ ...contract, steps: advised })).toBeGreaterThan(0);
+    // The requirement is on |r - q|, and every case above leaves dividendYield unset — so
+    // mutating that subtraction to an addition survived the whole suite. Here r - q is 0.10 and
+    // r + q is 0.40, which move the answer from 40 steps to 640.
+    const withYield = { ...contract, dividendYield: 0.15, volatility: 0.05 };
+    try {
+      crrPrice({ ...withYield, steps: 1 });
+      expect.unreachable('the tree should have been refused');
+    } catch (error) {
+      expect((error as Error).message).toMatch(/Raise steps to at least 40,/);
+    }
+
+    expect(() => crrPrice({ ...withYield, steps: 39 })).toThrow(/probability/i);
+    expect(Number.isFinite(crrPrice({ ...withYield, steps: 40 }))).toBe(true);
   });
 
   it('says plainly when no legal step count works, and qualifies the fallback', () => {
@@ -383,7 +426,7 @@ describe('validation', () => {
     }
 
     expect(message).toMatch(/No legal step count works/);
-    expect(message).toMatch(/625001 steps would be needed/);
+    expect(message).toMatch(/625000 steps would be needed/);
     expect(message).toMatch(/European contract use bsPrice/);
     expect(message).toMatch(/American contract in this region has no fallback/);
 

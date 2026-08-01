@@ -110,7 +110,7 @@ describe('probabilities under Q', () => {
       expect(actual, `strike ${strike}`).toBe(expected);
     }
 
-    // The value at strike 60 is 1.04e-25 — a complement would have reported exactly 0.
+    // The value at strike 60 is 2.97e-25, where d2 is 10.32 — a complement reports exactly 0.
     expect(probabilityItmUnderQ({ ...deep, strike: 60, optionType: 'put' })).toBeGreaterThan(0);
     expect(probabilityBelowUnderQ({ ...deep, strike: 100, level: 60 })).toBeGreaterThan(0);
   });

@@ -55,8 +55,9 @@ describe('normalCdf', () => {
   });
 
   it('matches 40-digit ground truth across the body of the distribution', () => {
-    // |x| <= 3 is Hart's rational branch. Its worst measured relative error is 1.4e-14, at
-    // z = 2.98, where the value itself is of order 1e-3.
+    // |x| <= 3 is Hart's rational branch. Its relative error rises monotonically towards the
+    // branch point — 1.40e-14 at z = 2.98, 1.48e-14 at 2.99, 1.60e-14 at 2.99933 — so the worst
+    // case is the limit at 3, not any point a coarse grid happens to land on.
     for (const { x, value } of reference.cdf) {
       if (Math.abs(Number(x)) > 3) continue;
       expectRelative(normalCdf(Number(x)), Number(value), 2e-14);
@@ -67,7 +68,7 @@ describe('normalCdf', () => {
   // an integer, a half-integer or a round decimal, and for all of those z*z/2 is exact. That
   // distinction is not cosmetic: it decides which of the two tests below applies. See
   // docs/MATH.md §3.4.
-  const ARGUMENT_NOT_EXACT = new Set(['-4.36', '-6.75', '-11.6', '-13.3', '-14.7']);
+  const ARGUMENT_NOT_EXACT = new Set(['-4.87', '-6.83', '-11.6', '-13.3', '-14.7']);
 
   it('keeps relative accuracy in the tail where z*z/2 is exactly representable', () => {
     // |x| > 3 is the deepened continued fraction. This is the assertion that West's published
@@ -117,7 +118,7 @@ describe('normalCdf', () => {
   it('does not truncate the tail while it is still representable', () => {
     // Regression. A cutoff at z = 37 is common, justified by `1 - Q(z)` being indistinguishable
     // from 1 beyond it — which is true, and says nothing about Q itself. Q stays representable
-    // to about z = 38.5, and truncating at 37 would discard some nineteen orders of magnitude of
+    // to about z = 38.5, and truncating at 37 would discard some twenty-four orders of magnitude of
     // exactly the relative tail accuracy this implementation exists to provide.
     expect(normalCdf(-37)).toBeGreaterThan(0);
     expect(normalCdf(-37.5)).toBeGreaterThan(0);

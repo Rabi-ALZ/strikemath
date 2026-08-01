@@ -269,7 +269,7 @@ const CDF_POINTS = [
   '-30',
   '-36',
   // Past the z = 37 mark that a truncating implementation would report as 0. Q(-37) is 5.7e-300,
-  // four orders of magnitude above the smallest normal double.
+  // eight orders of magnitude above the smallest normal double.
   '-37',
   // Deliberately awkward points: z for which z^2/2 is NOT exactly representable as a double.
   //
@@ -281,9 +281,12 @@ const CDF_POINTS = [
   // where the true figure is 5.2e-15. See docs/MATH.md §3.4 and the DECISIONS entry of
   // 2026-08-01.
   //
-  // These five are the worst cases found by a dense sweep of |du| in their respective decades.
-  '-4.36',
-  '-6.75',
+  // Each is verified to have |du| > 0 rather than assumed to. Two earlier choices did not: 6.75
+  // is 27/4, so z^2/2 = 22.78125 = 22 + 25/32 is exact in binary and |du| is 0 — a member of the
+  // very set the point was chosen to avoid — and 4.36 gave only 1.46e-16. Writing down a value
+  // that "looks awkward" reproduces the original mistake at one remove.
+  '-4.87',
+  '-6.83',
   '-11.6',
   '-13.3',
   '-14.7',

@@ -119,7 +119,7 @@ function putPrice(inputs: ResolvedOptionInputs): number {
  * @example
  * ```ts
  * bsCall({ spot: 42, strike: 40, timeToExpiry: 0.5, riskFreeRate: 0.1, volatility: 0.2 });
- * // 4.759422392871542
+ * // 4.759422392871535
  * ```
  */
 export function bsCall(inputs: OptionInputs): number {

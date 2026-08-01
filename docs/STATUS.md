@@ -2,7 +2,7 @@
 
 Updated at the end of each session.
 
-## 2026-08-01 — Documentation reviewed against measurement, still not published
+## 2026-08-01 — Documentation reviewed, verifier run, still not published
 
 Phase 0 was already complete and the API frozen. This session did the one task that had been
 named as non-delegable: reading `docs/MATH.md` and `README.md` as a quant would, and defending
@@ -10,7 +10,7 @@ every convention. Ten questions, each answered by measuring rather than by readi
 
 ### Verification
 
-- `pnpm test` — **179 tests across 12 files**
+- `pnpm test` — **180 tests across 12 files**
 - `pnpm test:coverage` — **100%** of statements, branches, functions and lines
 - `pnpm typecheck`, `pnpm lint` — clean
 - Runtime dependencies: none
@@ -52,20 +52,32 @@ returned 0.00 for an American put worth 60.00.
 The boundary-rule property probe moved from `sigma = 1e-9` to `1e-8`, because below roughly 1e-8
 the analytic branch moves away from the limit rather than towards it.
 
+### The verifier run
+
+`quant-verifier` was then run in its own right for the first time, in a fresh context, with the
+four checks this session added. It found **nine things, two of them defects in behaviour**: an
+off-by-one in the new `crrPrice` step-count helper, and `impliedVolatility` silently returning a
+volatility outside `priceTolerance` when the bracket collapsed. Both are fixed, both carry
+regression tests, and the full account is in DECISIONS.md.
+
+The off-by-one is worth naming here. It was introduced this session, in the same hour the
+convenient-points pattern was written up, and the test written to prevent it used a non-integral
+ratio — the one case where the wrong formula and the right one agree. Three of the verifier's
+four new checks fired, including mutation testing, which found that `Math.abs(r - q)` could be
+changed to `r + q` and survive the entire suite.
+
 ### Named risks
 
-- **The `quant-verifier` subagent has still not been run in its own right.** It is defined in
-  `.claude/agents/`, and this session added four checks to it — mutation testing for coverage gaps,
-  searching the documentation after a code fix, sweeping products of extremes, and looking for the
-  sibling of any correct qualification. None of those has been exercised by the agent itself.
-- **This session's own work is unreviewed**, on the same principle that made round two necessary:
-  a fix carries the blind spot of the thing it repairs.
+- **The verifier's own findings were fixed after it ran, and have not been reviewed.** This is the
+  same gap that made round two necessary in July: a fix carries the blind spot of the thing it
+  repairs. A further run is the cheapest remaining risk reduction.
 
 ### Before the button can be pressed
 
 All reversible, none urgent, all decisions rather than chores:
 
-- `author` and `repository` in package.json are placeholders
+- `author` in package.json is set to Rabi Alzare; `repository` is still a placeholder pointing at
+  a GitHub organisation that does not exist yet
 - version is `0.0.0`; `0.1.0` is the intended first publication
 - no GitHub organisation, no CI run, and therefore correctly no badge
 - the README's section on Q-probabilities does not yet carry the delta-versus-`N(d2)` point from

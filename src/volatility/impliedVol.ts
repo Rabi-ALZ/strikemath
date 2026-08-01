@@ -27,7 +27,7 @@ import { InvalidInputError, assertFinite, assertPositive } from '../utils/valida
  * **The bounds are economic, not numerical.** A common justification for a floor around 1e-6 is
  * that the price stops being distinguishable from intrinsic below it. Measured, that is simply
  * false: for a forward-at-the-money one-year contract on a spot of 100 the price still exceeds
- * intrinsic by 3.8e-13 at `sigma = 1e-14`, and only collapses at `sigma = 1e-18` — ten orders of
+ * intrinsic by 3.9e-13 at `sigma = 1e-14`, and only collapses at `sigma = 1e-17` — eleven orders of
  * magnitude below the floor. The floor is there because 0.0001% annualised volatility is not a
  * market, not because the arithmetic gives out.
  *
@@ -240,8 +240,28 @@ function solve(
 
     // The bracket has collapsed to the resolution of a double. No further iteration can improve
     // the answer, and the midpoint is the best value representable.
+    //
+    // Returning it unconditionally was a silent breach of this module's one guarantee. With a
+    // `priceTolerance` at or below roughly one ulp of the price, the midpoint can miss the target
+    // by many multiples of it: at S = K = 10 000, T = 1, r = 0.05 and a tolerance of 1e-14, 32 of
+    // 40 consecutive ulps of the target price returned without an exception and outside
+    // tolerance, the worst by 205x. The guarantee is that a returned volatility reproduces the
+    // price, so the residual is checked here and a tolerance finer than the price can represent
+    // is reported rather than quietly missed.
     if (high - low <= 4 * Number.EPSILON * Math.max(1, high)) {
-      return (low + high) / 2;
+      const best = (low + high) / 2;
+      const residual = Math.abs(priceAt(best) - target);
+
+      if (residual <= priceTolerance) return best;
+
+      throw new ConvergenceError(
+        `implied volatility cannot reproduce the price ${target} to within ${priceTolerance}: ` +
+          `the bracket has collapsed to [${low}, ${high}], which is the resolution of a double, ` +
+          `and the best volatility in it is off by ${residual}. This is a limit of the price's ` +
+          'own representation rather than of the solver — dSigma = dPrice / vega, so a tolerance ' +
+          'below about one ulp of the price is not reachable at any iteration count. Widen ' +
+          'priceTolerance.',
+      );
     }
 
     const slope = blackScholesVega({ ...shared, volatility });

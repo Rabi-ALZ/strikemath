@@ -557,3 +557,70 @@ One behavioural change: `crrPrice`'s risk-neutral-probability error now computes
 that would be needed, says plainly when that exceeds the cap, and qualifies the `bsPrice` fallback
 to European contracts. Everything else was documentation, JSDoc and tests. The suite went from 175
 to 179, coverage stayed at 100% of statements, branches, functions and lines.
+
+---
+
+## 2026-08-01 — The verifier's first run in its own right, and two real code defects
+
+`quant-verifier` had never been run as a registered subagent — only through a general-purpose
+agent, and never with the four checks added earlier today. Run against `/src` in a fresh context,
+it produced nine findings. Every one was reproduced independently before being acted on.
+
+**Two are defects in behaviour, not in prose.**
+
+**1. `minimumStepsForValidProbability` was off by one, and the test written to prevent exactly
+that could not see it.** The guard accepts `p <= 1`, so the requirement is `n >= T(|r-q|/sigma)^2`
+and the answer is `ceil`, not `floor(x) + 1`. The two forms differ only when the ratio is an exact
+integer — and all three worked examples in `docs/MATH.md` §5.1 are exact integers, so the error
+message said 62 501, 625 001 and 25 001 where the documentation said 62 500, 625 000 and 25 000.
+At `S = K = 100, r = 0.25, q = 0, sigma = 0.125, T = 1` the ratio is exactly 4 and `steps: 4`
+prices at 22.1199, while the caller was sent to 5.
+
+The test that was supposed to catch this used `sigma = 0.02`, where the ratio is 1562.5. **On a
+non-integral ratio `floor + 1` and `ceil` agree.** A convenient test point, chosen the same day the
+pattern was written up, in the test written to guard against it. The suite had also locked the
+wrong value in as a string assertion.
+
+This is the eighth instance of the pattern, and the clearest evidence yet for the note in the
+entry above: knowing about it does not prevent it.
+
+**2. `impliedVolatility` could return a volatility that missed `priceTolerance`, silently.** The
+early return when the bracket collapses to the resolution of a double handed back the midpoint
+without checking the residual. At `S = K = 10 000, T = 1, r = 0.05` with `priceTolerance = 1e-14`,
+32 of 40 consecutive ulps of the target price returned without an exception and outside tolerance,
+the worst by 205x. The module's stated guarantee — "never returns a number that does not reproduce
+the input price", and §7.2's "failure is always an exception" — was unqualified and untrue. The
+residual is now checked, and a tolerance finer than the price can represent is reported as a
+`ConvergenceError` naming the mechanism.
+
+**The remaining seven were wrong numbers**, and their shape is by now familiar:
+
+- The Hart-branch worst error was quoted as 1.4e-14 at z = 2.98, from a sweep at step 0.02. Dense
+  measurement gives 1.6e-14 rising monotonically into the branch point — the maximum is the limit
+  at 3, not a grid point.
+- Two of the five "awkward" fixture points added earlier today were not awkward. `z = 6.75` is
+  27/4, so `z^2/2 = 22.78125` is exact in binary and `|du|` is 0 — a member of the very
+  measure-zero set the point was chosen to avoid. Replaced by 4.87 and 6.83, each verified rather
+  than assumed.
+- `Q(37)` is **eight** orders of magnitude above the smallest normal double, not four, and a
+  cutoff at 37 discards about **twenty-four** orders, not nineteen. Both figures appeared in four
+  files.
+- `1.04e-25` appeared in three places as the value of `N(-d2)` at three different contracts. It is
+  right at none of them: at `d2 = 10.4` the value is 1.24e-25, and at the strike-60 contract in
+  `test/risk.test.ts` it is 2.97e-25 with `d2 = 10.32`. One remembered number, copied twice.
+- The relative accuracy quoted alongside it, 1.6e-16, is the superseded figure from this morning —
+  corrected in four files and left standing in two.
+- The kink table in `analytical.ts` gave a delta no input produces: its `vega` and `rho` rows are
+  the analytic branch at `sigma = 1e-7`, but its delta row is neither that (0.4803947387) nor the
+  boundary value (0.4803947196).
+- `bsCall`'s own `@example` gave 4.759422392871542; the function returns ...535, which is the value
+  the README and the `impliedVolatility` example both use.
+
+**What the run says about the verifier itself.** Three of its four new checks fired. Mutation
+testing found that `Math.abs(r - q)` in the new helper could be changed to `r + q` and survive the
+whole suite, because every test reaching it left `dividendYield` unset. The
+search-the-documentation check found the 1.6e-16 and 1.04e-25 siblings. The
+look-for-the-sibling check found the kink table. The product-of-extremes check confirmed the
+`gamma` NaN already documented in §9.
+
+Tests 179 -> 180, coverage still 100% on all four metrics.

@@ -81,9 +81,9 @@ const HART_Q7 = 0.0883883476483184;
 function upperTail(z: number): number {
   // There is deliberately no cutoff here. A cutoff at z = 37 is a common one, on the reasoning
   // that beyond it `1 - Q(z)` is indistinguishable from 1 — which is true, but says nothing
-  // about Q itself. Q(37) is 5.7e-300, four orders of magnitude above the smallest normal
+  // about Q itself. Q(37) is 5.7e-300, eight orders of magnitude above the smallest normal
   // double, and stays representable to about z = 38.5. Truncating there would throw away
-  // roughly nineteen orders of magnitude of exactly the relative tail accuracy this
+  // roughly twenty-four orders of magnitude of exactly the relative tail accuracy this
   // implementation exists to provide.
   //
   // `Math.exp` underflows to 0 on its own at z ~ 38.6, and the continued fraction stays finite

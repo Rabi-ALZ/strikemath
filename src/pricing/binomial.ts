@@ -95,7 +95,12 @@ function maxRepresentableSteps(inputs: ResolvedOptionInputs): number {
 function minimumStepsForValidProbability(inputs: ResolvedOptionInputs): number {
   const drift = Math.abs(inputs.riskFreeRate - inputs.dividendYield);
 
-  return Math.floor((inputs.timeToExpiry * drift ** 2) / inputs.volatility ** 2) + 1;
+  // `ceil`, not `floor(x) + 1`. The guard accepts `p <= 1`, so the requirement is `n >= x` and
+  // an exactly integral `x` is already usable: at S = K = 100, r = 0.25, q = 0, sigma = 0.125,
+  // T = 1 the ratio is exactly 4 and `steps: 4` prices at 22.1199, while `floor(x) + 1` sent the
+  // caller to 5. The three worked examples in docs/MATH.md 5.1 are all integral, so the two forms
+  // disagreed on precisely the cases the documentation highlights.
+  return Math.ceil((inputs.timeToExpiry * drift ** 2) / inputs.volatility ** 2);
 }
 
 /** {@link OptionInputs} plus the contract side, exercise style and tree resolution. */
@@ -260,7 +265,9 @@ function priceTree(
     // they are looking for guidance.
     const advice =
       needed <= MAX_BINOMIAL_STEPS
-        ? `Raise steps to at least ${needed}.`
+        ? `Raise steps to at least ${needed}, and well above it for an answer worth having: at ` +
+          `exactly ${needed} the up move equals the forward, so p is 1, the tree carries no ` +
+          'dispersion and every path lands on the forward.'
         : `No legal step count works: ${needed} steps would be needed and the cap is ` +
           `${MAX_BINOMIAL_STEPS}. This happens when sigma < |r - q| sqrt(T / ${MAX_BINOMIAL_STEPS}). ` +
           'For a European contract use bsPrice, which has no such limit. An American contract ' +

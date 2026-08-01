@@ -162,7 +162,7 @@ the distinction turns out to matter, and why is the next subsection:
 
 | Region                          | Worst relative error                                 |
 | ------------------------------- | ---------------------------------------------------- |
-| \|z\| < 3 (Hart's branch)       | 1.4e-14, at z = 2.98                                 |
+| \|z\| < 3 (Hart's branch)       | 1.6e-14, rising into the branch point                |
 | \|z\| >= 3 (continued fraction) | see the floor below — the algorithm is not the limit |
 
 Absolute error is around 1e-16 or better everywhere. For pricing this is the number that matters,
@@ -227,8 +227,8 @@ a future reader can see it was considered rather than missed.
 
 **There is no tail cutoff.** A cutoff at |z| = 37 is a common one, justified by `1 - Q(z)` being
 indistinguishable from 1 beyond it. That is true, and it says nothing about `Q` itself: `Q(37)` is
-5.7e-300, four orders of magnitude above the smallest normal double, and `Q` stays representable
-to about |z| = 38.5. Truncating at 37 would discard some nineteen orders of magnitude of exactly
+5.7e-300, eight orders of magnitude above the smallest normal double, and `Q` stays representable
+to about |z| = 38.5. Truncating at 37 would discard some twenty-four orders of magnitude of exactly
 the relative tail accuracy this implementation exists to provide. `Math.exp` underflows to 0 on
 its own where 0 is the right answer, so nothing needs to be forced.
 
@@ -612,9 +612,9 @@ asymmetry is deliberate.
 
 **The bounds are economic, not numerical.** It would be tidy to say the floor sits where the price
 stops differing from intrinsic. Measured, that is false by ten orders of magnitude: for a
-forward-at-the-money one-year contract on a spot of 100, the price exceeds intrinsic by 3.8e-5 at
-`sigma = 1e-6`, by 3.8e-13 at `sigma = 1e-14`, and only becomes indistinguishable at
-`sigma = 1e-18`. The floor is where volatility stops being a market quantity — 0.0001% annualised
+forward-at-the-money one-year contract on a spot of 100, the price exceeds intrinsic by 3.99e-5 at
+`sigma = 1e-6`, by 3.91e-13 at `sigma = 1e-14`, and only becomes indistinguishable at
+`sigma = 1e-17`. The floor is where volatility stops being a market quantity — 0.0001% annualised
 — not where the arithmetic gives out. The ceiling is the same judgement at the other end: 500%
 annualised is past any traded market.
 

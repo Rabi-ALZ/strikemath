@@ -6,6 +6,14 @@ import type { OptionInputs } from './types.js';
  * Every failure in this library is an explicit error carrying the offending value. Returning
  * `NaN` would let a wrong number travel silently through a position calculation and surface as a
  * risk figure nobody can trace back.
+ *
+ * The guarantee that follows from this is bounded by the documented input domain, and stating it
+ * unqualified was itself a defect. Inside that domain no function returns `NaN` or `Infinity`,
+ * and a property test enforces it. Outside, two simultaneous extremes can still produce both —
+ * `gamma` is `phi(d1) / (S sigma sqrt(T))`, which is `0/0` once the denominator underflows even
+ * though `hasNoDispersion` is false, and theta's `sigma / (2 sqrt(T))` term overflows for a large
+ * enough `sigma` at a small enough `T`. Neither is reachable by varying one input at a time. See
+ * docs/MATH.md §9.
  */
 export class InvalidInputError extends RangeError {
   constructor(message: string) {
