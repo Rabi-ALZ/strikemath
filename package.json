@@ -1,6 +1,7 @@
 {
   "name": "strikemath",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "private": true,
   "description": "Dependency-free TypeScript library for options pricing, Greeks, implied volatility and risk metrics.",
   "keywords": [
     "options",
@@ -16,11 +17,11 @@
   "author": "Rabi Alzare",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/strikemath/strikemath.git"
+    "url": "git+https://github.com/Rabi-ALZ/strikemath.git"
   },
-  "homepage": "https://github.com/strikemath/strikemath#readme",
+  "homepage": "https://github.com/Rabi-ALZ/strikemath#readme",
   "bugs": {
-    "url": "https://github.com/strikemath/strikemath/issues"
+    "url": "https://github.com/Rabi-ALZ/strikemath/issues"
   },
   "type": "module",
   "sideEffects": false,

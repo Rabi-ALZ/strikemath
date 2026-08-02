@@ -89,6 +89,54 @@ documented, measured deviation from West's published normal CDF constants.
 
 ---
 
+## How this was built
+
+This library was written with AI assistance — Claude, working under my direction — and that fact is
+the reason the verification is what it is.
+
+Language models produce fluent explanations. A well-formed justification costs the same to generate
+whether or not it is true, and it reads as knowledge either way. That is not a flaw you can prompt
+your way out of; it is a property of the tool. So the process had to assume that every claim was
+wrong until measured, and the record of doing that is in
+[`docs/DECISIONS.md`](./docs/DECISIONS.md).
+
+The result is worth stating plainly, because it was not what I expected:
+
+|                              | Defects found |
+| ---------------------------- | ------------- |
+| In the code's behaviour      | **17**        |
+| In the claims about the code | **29**        |
+
+**No formula was ever wrong.** Not one, across four rounds of adversarial review. The mathematics
+held. What did not hold was the prose describing it: accuracy figures measured at convenient
+points, boundary values documented as conventions when they were limits, and instructions to
+callers that reproduced a defect already removed from the source.
+
+The reason is structural. Code has a test suite. Prose does not.
+
+Three findings from that process shaped how this library is verified:
+
+**Convenient test points are systematically optimistic.** The reference fixtures were integers and
+half-integers — what a person writes down — which is precisely where `z²/2` is exactly
+representable and the tail error vanishes. The published accuracy figure was measured on a
+measure-zero set. A grid chosen for legibility is a grid chosen, unintentionally, for flattery.
+
+**Fixes carry the blind spot of what they repair.** Five of the seventeen behavioural defects were
+created by fixes to the other twelve. One review round is never enough, and the second round exists
+in this project's history because the first one's output was never reviewed.
+
+**Knowing the pattern does not prevent it.** The DECISIONS entry establishing this library's
+thesis — that recalled values cannot be trusted — itself contained a 19% recall error. And a test
+written specifically to catch the "convenient point" mistake used a convenient point, in the same
+hour the pattern was named. Only measurement prevents it.
+
+What follows from all this is the verification you can check yourself: ground truth generated in
+exact BigInt arithmetic rather than copied from a table, external anchors for every module so none
+rests on self-consistency, and property tests that assert structural identities rather than values.
+The generator is in the repository. Run it.
+
+---
+
 ## Greek conventions
 
 **The core always returns raw units.** No exceptions, no settings, no options object.
@@ -229,6 +277,26 @@ documentation has long since fallen away.
 
 If what you want is how often a trade will actually make money, this library cannot tell you, and
 neither can any tool that only sees prices. That answer needs a view on expected returns.
+
+### Delta is not the probability of finishing in the money
+
+This is the most common way the distinction gets lost, and it is worth one number.
+
+`N(d1)` is a probability of the **same event** as `N(d2)` — the option finishing in the money — but
+under a different measure again: the one in which the underlying itself is the numéraire. And delta
+is not even that, it is `e^(-qT) N(d1)`. So reading a delta of 0.30 as "a 30% chance" is wrong
+twice: wrong measure, then wrong again by the dividend discount.
+
+The error is not a rounding detail. On a two-year at-the-money call at 60% volatility:
+
+|                        |           |
+| ---------------------- | --------- |
+| `delta`                | **0.698** |
+| `probabilityItmUnderQ` | **0.371** |
+
+**32.7 percentage points apart, on an entirely ordinary contract.** The gap widens with
+`sigma sqrt(T)` and tends to a full 100 points in the limit. Worked out in full, with the
+derivation and a table of contracts, in [`docs/MATH.md`](./docs/MATH.md) §2.1.
 
 ---
 

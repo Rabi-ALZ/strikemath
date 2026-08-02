@@ -17,10 +17,13 @@ every convention. Ten questions, each answered by measuring rather than by readi
 
 ### What the review found
 
-**Sixteen defects, and all but one of them in the claims rather than in the code.** The full
-account is in DECISIONS.md under 2026-08-01. The ratio is the point: two earlier rounds of
-adversarial review of `/src` found nine defects in the mathematics; this pass found sixteen in the
-description of that mathematics, while the code needed exactly one behavioural change.
+**Seventeen defects, fifteen of them in the claims rather than in the code.** The full account is
+in DECISIONS.md under 2026-08-01. The ratio is the point: two earlier rounds of adversarial review
+of `/src` found ten defects in the mathematics, and this pass found fifteen in the description of
+it.
+
+The "nine" that stood here until 2 August was never counted — see the DECISIONS entry of that date,
+which corrects every use of it and states the counting rule.
 
 The code held. What was written about the code did not — because prose has no test suite.
 

@@ -405,7 +405,7 @@ d(exp(-u)) / exp(-u) = -du
 
 so any rounding of the argument passes through as relative error in the result. The measurement
 was therefore taken on precisely the measure-zero set where this error term vanishes, and the
-result was reported as holding *anywhere on the line*.
+result was reported as holding _anywhere on the line_.
 
 Measured on a dense sweep with exact BigInt comparison, the worst relative error is **5.2e-15 at
 z = 11.6**, twenty-two times the figure claimed, and it follows the envelope `(z^2/2) * eps`:
@@ -696,3 +696,98 @@ It does not converge to zero. It converges on **the newest layer** — the defec
 was written most recently, however carefully the older material was checked. So the stopping rule
 cannot be "no defects remain". It has to be that the defects still being found are cheaper to fix
 after publication than to hunt for before it, and that judgement is now the only thing left open.
+
+---
+
+## 2026-08-02 — The headline figure was never counted; this supersedes every use of "nine"
+
+Four entries above, three commit messages and `docs/STATUS.md` all say that two rounds of
+adversarial review found **nine** defects in `/src`. That number appears nowhere as the result of
+counting. It was asserted once, then repeated, then written into the permanent record, and a
+strategy discussion outside this repository has already been built on it.
+
+Counted from the entries themselves: round one recorded five defects. Round two recorded four, and
+its own closing line adds a fifth — "writing the regression tests then surfaced a fifth, the
+`sigma sqrt(T)` underflow above". Five plus five is ten. **The figure was wrong at the first
+opportunity, and every later use inherited it.**
+
+This is the last instance of the pattern this log has been recording since 29 July, and it is the
+purest. There is no floating-point subtlety here and no convenient measurement grid. There is a
+number that was never counted, in the document whose entire subject is measuring rather than
+asserting, repeated by the author who wrote that subject down.
+
+### The count, with the rule stated so it can be checked
+
+One defect is one distinct wrong behaviour or one distinct wrong claim, as enumerated in the entry
+that recorded it.
+
+| Round                             | Behaviour | Claims, comments, tests |
+| --------------------------------- | --------- | ----------------------- |
+| Round one, 29 July                | 5         | —                       |
+| Round two, 29 July                | 5         | —                       |
+| Boundary values reframed, 30 July | —         | 1                       |
+| Ten-question review, 1 August     | 2         | 15                      |
+| Verifier run one, 1 August        | 2         | 7                       |
+| Verifier run two, 1 August        | 3         | 6                       |
+| **Total**                         | **17**    | **29**                  |
+
+**The count carries judgement, and saying so is part of getting it right.** The `crrPrice` error
+message contributed two entries to the behaviour column — "increase steps" being unreachable past
+the cap, and the unqualified `bsPrice` fallback — because they are independent statements with
+independent fixes. Merge them and the totals become 16 and 30. Replacing one unverified number with
+another that looks exact would repeat the mistake in a quieter register, so the rule is written out
+above and the sensitivity is stated rather than hidden.
+
+### What is robust to the counting rule, and is the part worth publishing
+
+- **No formula was ever wrong.** Not one, across four rounds. Every behavioural defect was in a
+  transition, a boundary, a guard, a signed zero, or a message — never in the mathematics itself.
+- **Five of the seventeen were created by fixes to the other twelve.** The binomial guard that
+  refused puts and `maxRepresentableSteps` naming a failing count both came from round one's fixes;
+  the step-count off-by-one came from the ten-question review; the `ceil` undershoot and the
+  `impliedVolatility` refusal both came from the first verifier run's fixes. **Nearly a third of
+  the defects in behaviour were manufactured by the repair of earlier ones.** That is the sharpest
+  single argument for never stopping at one review round, and it vanished entirely inside "nine".
+- **Claims outnumber behaviour by roughly 1.7 to 1.** The earlier framing of "nine against
+  thirty-three" made that ratio look like 1 to 3.7. The real one is smaller and still decisive:
+  prose has no test suite, and it shows.
+
+### The correction to make outside this repository
+
+Any write-up of this work must use 17 and 29 with the rule above attached, or 16 and 30 with the
+merge stated — never "nine". The self-inflicted share is the number to lead with, because it is the
+finding that generalises: a fix carries the blind spot of the code it repairs, measured here at
+29% of all behavioural defects.
+
+And the reason to publish this entry rather than quietly correct the others is that the failure is
+the strongest evidence in the log. Knowing the pattern, writing it down, and building a verifier
+around it did not stop the author repeating it on the project's own headline figure. Only counting
+did.
+
+---
+
+## 2026-08-02 — `private: true`, so that publication cannot happen by accident — TEMPORARY
+
+> **Status: temporary.**
+> **Trigger to remove: an explicit decision to publish, from Rabi, and nothing else.**
+> Removing it is one line. It is not a chore to be tidied up by whoever notices it next.
+
+`package.json` carries `"private": true`, which makes `npm publish` and `pnpm publish` refuse to
+run. On a library whose entire purpose is to be published this looks like an error, so it is
+recorded here as a decision.
+
+**Why a flag rather than an intention.** Publication is irreversible in the way that matters: a
+version number, once taken on npm, cannot be reused even after an unpublish, and the tarball is
+mirrored within seconds. Every other guard in this repository is of the same kind — the API takes
+named parameters so spot and strike cannot be swapped, the Greeks have no runtime unit setting so
+a scaled number cannot be mistaken for an unscaled one. In each case a failure mode is closed in
+the mechanism rather than left to care. This is that principle applied to the one action that
+cannot be taken back.
+
+**What it does not do.** It blocks nothing else. `pnpm build`, the full test suite, `npm pack` and
+the CI workflow all run unchanged, so the publishable artefact stays continuously verifiable while
+the act of publishing stays locked.
+
+The state to be in is one where the only thing standing between the library and npm is a decision,
+not a chore. That is now the case: the repository is publication-ready, and the flag is the record
+that the decision has not yet been made.

@@ -23,3 +23,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+
+      # The published artefact is the build output, so a failing declaration build would ship
+      # broken types while every other check stayed green.
+      - run: pnpm build
