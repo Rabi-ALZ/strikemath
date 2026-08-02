@@ -38,7 +38,9 @@
   },
   "files": [
     "dist",
-    "docs"
+    "docs/MATH.md",
+    "docs/DECISIONS.md",
+    "docs/STATUS.md"
   ],
   "engines": {
     "node": ">=18"
