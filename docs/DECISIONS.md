@@ -791,3 +791,45 @@ the act of publishing stays locked.
 The state to be in is one where the only thing standing between the library and npm is a decision,
 not a chore. That is now the case: the repository is publication-ready, and the flag is the record
 that the decision has not yet been made.
+
+**One thing to know on the day it is removed.** `npm publish --dry-run` does **not** exercise this
+guard. `lib/commands/publish.js` calls `libnpmpublish` only under `if (!dryRun)`, and the check
+lives inside that module — so a dry run against a private package packs the tarball, prints
+`+ strikemath@0.1.0` and exits 0, which is indistinguishable from the flag not working. Verified
+by calling `libnpmpublish.publish()` directly with this manifest: it throws `EPRIVATE` before any
+network call. The flag works; the obvious test of it does not.
+
+---
+
+## 2026-08-02 — What ships in the tarball: the reasoning ships, the strategy does not
+
+The published package contains `dist`, `README.md`, `LICENSE` and three of the four files in
+`docs/`. Twelve files, 152 kB packed. Each part of that is a decision.
+
+**`docs/MATH.md` and `docs/DECISIONS.md` are included, because they are the differentiator.** They
+are the reason to choose this library over another one that also multiplies `N(d1)` by a discount
+factor. Measured, the cost of leaving them out was concrete rather than theoretical: README links
+into `docs/` **seven times**, and every one of those links was dead in the published package —
+dead precisely where a developer follows it, in `node_modules`, having just been told the numbers
+are checkable. `docs/` is 110 kB, which took the tarball from 112 kB to 152 kB.
+
+**`docs/ROADMAP.md` is excluded, because it is planning rather than documentation.** It contains
+the pricing model, the white-label positioning and what is deliberately not being built. A
+competitor installing the package should not get the business plan with it.
+
+**The exclusion is written as an allowlist, not as a negation pattern.** `!docs/ROADMAP.md` would
+have closed the hole for the one file known about today and left every future internal document
+shipping by default. Listing the three files that ship closes it mechanically for all of them.
+This is the same principle as the named parameters and the absent units option: put the failure
+mode beyond reach rather than relying on someone remembering. The cost is real and is accepted —
+a new public document must be added to `files` deliberately, or its README link will be dead.
+Checked at the time of the change: nothing in the three shipped documents links to ROADMAP, so no
+cross-link was broken by removing it.
+
+**Source maps stay.** They are 242.8 kB of the 404 kB unpacked — 60%, and the single largest
+component. They are kept for the same reason the documentation is: a library that asks to be
+trusted should let a reader step into the code and watch a number being produced. Weight that buys
+verifiability is not weight this project economises on.
+
+Both decisions point the same way, which is why they are recorded together: transparency over
+slimness, consistent with every other choice in this repository.

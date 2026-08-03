@@ -1,6 +1,76 @@
 # Status
 
-Updated at the end of each session.
+Updated at the end of each session, newest first.
+
+## 2026-08-02 — Versioned, pushed to a private repo, CI green, publication still locked
+
+No change to `/src`. The session was about everything that surrounds the code: the headline
+figure, what ships in the tarball, and where the repository lives.
+
+### Verification
+
+- `pnpm test` — **184 tests across 12 files**, unchanged
+- `pnpm typecheck`, `pnpm lint`, `pnpm build`, `prettier --check` — clean
+- **First CI run in the project's history, and it passed.** Including `pnpm build`, added the day
+  before and never executed until now. Run 30760756059.
+
+### The count was corrected
+
+"Nine defects" appears in four DECISIONS entries, three commit messages and this file, and it was
+never the result of counting. Counted: **17 in behaviour, 29 in claims**, with the counting rule
+and its sensitivity written out in the DECISIONS entry of this date. Five of the seventeen were
+created by fixes to the other twelve — 29%, and that is the figure to lead with.
+
+### What now ships in the tarball
+
+Twelve files, 152 kB packed. Two decisions, both recorded in DECISIONS under this date:
+
+- **`docs/MATH.md`, `docs/DECISIONS.md` and `docs/STATUS.md` are included.** README follows seven
+  links into `docs/`, and every one of them was dead in the published package.
+- **`docs/ROADMAP.md` is excluded.** It is commercial strategy, not documentation of the library.
+  Listed as an allowlist rather than a negation pattern, so the failure mode is closed for future
+  internal documents and not only for this one.
+- **Source maps stay**, at 60% of the unpacked size. For a library that asks to be trusted, being
+  able to step into the code is a feature.
+
+### Where the repository lives
+
+`github.com/Rabi-ALZ/strikemath`, **private**, `main` fully pushed and tracking `origin/main`.
+Verified two ways: the API reports `isPrivate: true`, and an unauthenticated request returns 404.
+
+No commit count is recorded here on purpose. A count written into the file that is about to be
+committed is wrong the moment it is saved, and this project has a DECISIONS entry about exactly
+that class of number. `git log --oneline main | wc -l` answers it and cannot go stale.
+
+### Publication is locked, deliberately
+
+`package.json` carries `"private": true`. Verified against npm's own guard rather than assumed:
+`libnpmpublish` throws `EPRIVATE` before any network call. **`npm publish --dry-run` cannot
+demonstrate this** — dry-run skips the call containing the check and exits 0, which looks exactly
+like the flag not working. Worth knowing on the day it is removed.
+
+**These are two independent locks.** `private: true` blocks npm; the private repository hides the
+source. Opening one does not open the other, and publication is therefore two deliberate acts.
+
+### Before the button can be pressed
+
+The list that stood here on 1 August is done: author, repository and homepage are correct,
+`bugs` was wrong the same way and is fixed, version is `0.1.0`, the repository exists, CI has run,
+and the README carries the delta-versus-`N(d2)` point. What is left:
+
+- **The decision itself.** Nothing technical stands in the way.
+- A CI badge is now possible and is not added.
+- `actions/checkout@v4`, `setup-node@v4` and `pnpm/action-setup@v4` target Node 20, which GitHub
+  has deprecated and currently forces onto Node 24. Not urgent; it will become an error.
+- `test/blackScholes.test.ts` violates Prettier and has done since before this session. Left alone
+  rather than mixed into an unrelated commit.
+
+### Named risk, carried forward
+
+Unchanged from 1 August: **the fixes from the last review round are themselves unreviewed.** Four
+rounds in, the pattern is that defects concentrate in whatever was written most recently.
+
+---
 
 ## 2026-08-01 — Documentation reviewed, verifier run, still not published
 
