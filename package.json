@@ -54,6 +54,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "examples": "tsx examples/01-pricing.ts && tsx examples/02-greeks.ts && tsx examples/03-implied-vol.ts && tsx examples/04-risk.ts",
     "examples:smoke": "pnpm build && node examples/smoke-dist.mjs"
   },
