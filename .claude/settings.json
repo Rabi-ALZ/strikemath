@@ -1,6 +1,23 @@
 {
   "permissions": {
-    "deny": ["Read(./.env)", "Read(./.env.*)", "Read(*.pem)", "Read(*.key)", "Read(~/.ssh/**)"]
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(*.pem)",
+      "Read(*.key)",
+      "Read(~/.ssh/**)",
+
+      "Bash(npm publish)",
+      "Bash(npm publish:*)",
+      "Bash(pnpm publish)",
+      "Bash(pnpm publish:*)",
+      "Bash(yarn publish)",
+      "Bash(yarn publish:*)",
+      "Bash(npx npm publish:*)",
+
+      "Bash(git push)",
+      "Bash(git push:*)"
+    ]
   },
   "hooks": {
     "Stop": [
@@ -11,18 +28,6 @@
             "type": "command",
             "timeout": 300,
             "command": "pnpm test"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "timeout": 30,
-            "command": "node -e \"let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{try{const p=JSON.parse(s).tool_input?.file_path;if(p&&/\\.(ts|mts|cts|tsx|js|mjs|cjs|json|md|ya?ml)$/.test(p))require('child_process').spawnSync('pnpm',['exec','prettier','--write','--ignore-unknown',p],{stdio:'ignore'});}catch{}})\""
           }
         ]
       }
