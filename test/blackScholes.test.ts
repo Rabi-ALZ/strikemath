@@ -237,11 +237,25 @@ describe('no-arbitrage floor', () => {
     for (const [inputs, side] of [
       [{ spot: 5000, strike: 2, timeToExpiry: 5, riskFreeRate: 0.15, volatility: 0.1 }, 'put'],
       [
-        { spot: 2, strike: 5000, timeToExpiry: 5, riskFreeRate: 0, volatility: 0.1, dividendYield: 0.15 },
+        {
+          spot: 2,
+          strike: 5000,
+          timeToExpiry: 5,
+          riskFreeRate: 0,
+          volatility: 0.1,
+          dividendYield: 0.15,
+        },
         'call',
       ],
       [
-        { spot: 1000, strike: 2, timeToExpiry: 8, riskFreeRate: 0.05, volatility: 0.05, dividendYield: 0.15 },
+        {
+          spot: 1000,
+          strike: 2,
+          timeToExpiry: 8,
+          riskFreeRate: 0.05,
+          volatility: 0.05,
+          dividendYield: 0.15,
+        },
         'put',
       ],
     ] as const) {
