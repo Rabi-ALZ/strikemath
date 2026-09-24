@@ -133,12 +133,8 @@ export function parametricVar(inputs: ParametricVarInputs): number {
   );
 }
 
-/**
- * Linearly interpolated quantile of an ascending sorted sample.
- *
- * Shared with `cvar.ts`. Exported for that reason, not as part of the public surface.
- */
-export function quantile(sortedAscending: readonly number[], probability: number): number {
+/** Linearly interpolated quantile of an ascending sorted sample. */
+function quantile(sortedAscending: readonly number[], probability: number): number {
   const n = sortedAscending.length;
   if (n === 1) return sortedAscending[0]!;
 
