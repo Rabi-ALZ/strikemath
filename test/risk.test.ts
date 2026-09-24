@@ -270,11 +270,194 @@ describe('Conditional Value at Risk', () => {
     }
   });
 
+  it('is never smaller than the VaR across sample sizes and awkward confidence levels', () => {
+    // The ordering holds in exact arithmetic, and VaR here interpolates (type 7) while CVaR weights
+    // a fractional tail, so it is not true by construction. In floating point CVaR is a sum of up
+    // to n rounded terms, so the slack is the recursive-summation bound, n + 2 roundings of the
+    // largest loss — not a few ulps, and not absolute: a gap that passes at this sample's scale of
+    // 0.1 would fail at 10. Swept over sizes 1 to 150 with a fat-tailed sample and confidence
+    // levels that are not round numbers.
+    let seed = 12345;
+    const random = (): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+
+    let violations = 0;
+    for (let n = 1; n <= 150; n += 1) {
+      const sample = Array.from(
+        { length: n },
+        () => (random() - 0.5) * (random() < 0.1 ? 0.5 : 0.1),
+      );
+
+      const slack = (n + 2) * Number.EPSILON * Math.max(...sample.map(Math.abs));
+
+      for (const confidenceLevel of [0.013, 0.333, 0.617, 0.9, 0.95, 0.975, 0.99, 0.9973]) {
+        const var_ = historicalVar({ returns: sample, confidenceLevel });
+        const cvar = historicalCvar({ returns: sample, confidenceLevel });
+        if (cvar < var_ - slack) violations += 1;
+      }
+    }
+
+    expect(violations).toBe(0);
+  });
+
+  it('stays finite and exact at the extremes of the double range', () => {
+    // Summing the tail unscaled overflowed to -Infinity on two gains of 1e308. Weighting each loss
+    // first fixed that one and still overflowed on three losses of Number.MAX_VALUE, where the
+    // weights sum to a hair over 1 — 456 of the sizes from 1 to 1000 did. So every size is checked.
+    expect(historicalCvar({ returns: [1e308, 1e308], confidenceLevel: 0.01 })).toBe(-1e308);
+    expect(historicalCvar({ returns: [-1e308, -1e308], confidenceLevel: 0.01 })).toBe(1e308);
+    for (let n = 1; n <= 1000; n += 1) {
+      const worst = Array<number>(n).fill(-Number.MAX_VALUE);
+      expect(historicalCvar({ returns: worst, confidenceLevel: 1e-300 })).toBe(Number.MAX_VALUE);
+    }
+
+    // Mixed signs at the top of the range are what the scaling is for. Unscaled, MAX + MAX is
+    // Infinity before the -MAX is added, and holding the result to the tail's range then reports
+    // MAX where the mean is MAX / 3 — a wrong number that the range check makes look plausible.
+    const mixed = historicalCvar({
+      returns: [-Number.MAX_VALUE, -Number.MAX_VALUE, Number.MAX_VALUE],
+      confidenceLevel: 1e-300,
+    });
+    expect(mixed / (Number.MAX_VALUE / 3)).toBeCloseTo(1, 14);
+
+    // And weighting each loss first divided a subnormal loss by the tail mass, which underflowed:
+    // two losses of 5e-324 at a tail mass of 2 came back as 0.
+    expect(historicalCvar({ returns: [-5e-324, -5e-324], confidenceLevel: 1e-300 })).toBe(5e-324);
+    expect(historicalCvar({ returns: [5e-324, 5e-324, 5e-324, 0], confidenceLevel: 0.25 })).toBe(
+      -5e-324,
+    );
+
+    // With a tail mass below one observation, `fraction * loss / tailMass` underflowed a subnormal
+    // loss to 0. The single weight is `fraction / tailMass`, exactly 1, so the loss comes back as is.
+    for (const loss of [5e-324, 1e-310, 1e-300]) {
+      expect(historicalCvar({ returns: [-loss], confidenceLevel: 0.9999999999999999 })).toBe(loss);
+    }
+  });
+
+  it('never reports a loss of negative zero', () => {
+    // The losses are [0, 0, -5e-324] and the whole sample is the tail. In units of 5e-324 the sum
+    // is -1, and -1/3 of 5e-324 rounds to -0 — so the guard at the exit is what stops it, and
+    // removing the guard fails this. An earlier input, [5e-324, 0, 0] at 10%, looked like the
+    // same test and could not fail: the +0 terms turned -0 back into +0 before it reached the exit.
+    expect(Object.is(historicalCvar({ returns: [5e-324, 0, 0], confidenceLevel: 1e-300 }), 0)).toBe(
+      true,
+    );
+  });
+
   it('averages the worst losses in the historical case', () => {
     // At 90% on 10 observations the tail is the single worst loss, 0.05.
     expect(historicalCvar({ returns, confidenceLevel: 0.9 })).toBeCloseTo(0.05, 15);
     // At 80% the tail is the worst two: (0.05 + 0.04) / 2.
     expect(historicalCvar({ returns, confidenceLevel: 0.8 })).toBeCloseTo(0.045, 15);
+    // At 85% the tail mass is 1.5: the worst loss in full, the next at half weight.
+    expect(historicalCvar({ returns, confidenceLevel: 0.85 })).toBeCloseTo(
+      (0.05 + 0.5 * 0.04) / 1.5,
+      15,
+    );
+    // And at 87% it is 1.3. The 1.5 above is the one point where rounding the tail mass to the
+    // nearest whole number ties, so on its own it could not tell a fractional estimator from a
+    // rounding one — which would give 0.05 here.
+    expect(historicalCvar({ returns, confidenceLevel: 0.87 })).toBeCloseTo(
+      (0.05 + 0.3 * 0.04) / 1.3,
+      15,
+    );
+  });
+
+  it('does not snap a tail mass that is genuinely off a whole number', () => {
+    // A tail mass of 1.000001 is a real request, a million times further from 1 than rounding can
+    // put it. The worst loss is 0 among gains of 1, so the snapped answer would be exactly 0; the
+    // fractional one is minus a millionth.
+    const returns = [0, ...Array<number>(9).fill(1)];
+    const confidenceLevel = 0.8999999;
+    const mass = (1 - confidenceLevel) * returns.length;
+    expect(historicalCvar({ returns, confidenceLevel })).toBeCloseTo(-(mass - 1) / mass, 15);
+    expect(historicalCvar({ returns, confidenceLevel })).toBeLessThan(-9e-7);
+
+    // And one closer in: 1e-12 off, which is still about 200 times the snapping bound of
+    // 2 n eps = 4.4e-15 at n = 10. A threshold of 1e-9, or 1e-6, would swallow it.
+    const closer = 0.8999999999999;
+    const closerMass = (1 - closer) * returns.length;
+    expect(historicalCvar({ returns, confidenceLevel: closer })).toBeCloseTo(
+      -(closerMass - 1) / closerMass,
+      15,
+    );
+    expect(historicalCvar({ returns, confidenceLevel: closer })).toBeLessThan(-9e-13);
+  });
+
+  // Regression. The tail was `ceil((1 - c) n)`, and `1 - c` is not exact in binary: `1 - 0.95` is
+  // 0.050000000000000044, so at n = 20 the product is 1.0000000000000009 and `ceil` averaged the
+  // worst two losses. The test above sits at n = 10, c = 0.9, where the product rounds DOWN to
+  // 0.9999999999999998 and `ceil` is right by luck — so these are the common sizes where it is not.
+  it('averages exactly the worst k losses when (1 - c) n is k, at the sample sizes people use', () => {
+    const cases = [
+      { n: 20, confidenceLevel: 0.95, k: 1 },
+      { n: 40, confidenceLevel: 0.975, k: 1 },
+      { n: 100, confidenceLevel: 0.99, k: 1 },
+      { n: 500, confidenceLevel: 0.99, k: 5 },
+      { n: 1000, confidenceLevel: 0.99, k: 10 },
+      { n: 1000, confidenceLevel: 0.975, k: 25 },
+    ];
+
+    for (const { n, confidenceLevel, k } of cases) {
+      // Losses 1/n, 2/n, ..., 1 in a scrambled order, so the sort is exercised too.
+      const scrambled = Array.from({ length: n }, (_, i) => -(((i * 7919) % n) + 1) / n);
+      const worstK = Array.from({ length: k }, (_, i) => (n - i) / n);
+      const expected = worstK.reduce((total, loss) => total + loss, 0) / k;
+
+      expect(historicalCvar({ returns: scrambled, confidenceLevel })).toBeCloseTo(expected, 14);
+    }
+  });
+
+  // The same property as a sweep, because six hand-picked sizes are six convenient points. Against
+  // the `ceil` estimator this fails at 14 037 of the 79 800 pairs below — so it can see the defect.
+  // The tolerance is summation rounding, measured at 21 eps at worst; the ceil defect is at least
+  // 1/(2n), eleven orders larger.
+  it('averages exactly the worst k losses for every n up to 400 and every k below it', () => {
+    let failures = 0;
+
+    for (let n = 2; n <= 400; n += 1) {
+      const scrambled = Array.from({ length: n }, (_, i) => -(((i * 7919) % n) + 1) / n);
+
+      for (let k = 1; k < n; k += 1) {
+        const expected = (n - (k - 1) / 2) / n; // mean of n/n, (n-1)/n, ..., (n-k+1)/n
+        const actual = historicalCvar({ returns: scrambled, confidenceLevel: 1 - k / n });
+        if (Math.abs(actual - expected) > 64 * Number.EPSILON) failures += 1;
+      }
+    }
+
+    expect(failures).toBe(0);
+  }, 30_000);
+
+  // The sweep above cannot see the snap to a whole tail mass: its losses are evenly spaced, so a
+  // stray weight of 1e-15 on the next loss moves the mean by less than the summation rounding. Here
+  // the worst k losses are exactly 0 and every other observation is a gain, so the answer is
+  // exactly 0 and any leftover weight on a gain shows. Without the snap this fails at the same
+  // 14 037 of 79 800 pairs as the ceil estimator — the excess is still there, only smaller.
+  it('puts no weight outside the tail when (1 - c) n is meant as a whole number', () => {
+    let failures = 0;
+
+    for (let n = 2; n <= 400; n += 1) {
+      for (let k = 1; k < n; k += 1) {
+        const returns = [...Array<number>(k).fill(0), ...Array<number>(n - k).fill(1)];
+        const actual = historicalCvar({ returns, confidenceLevel: 1 - k / n });
+        if (!Object.is(actual, 0)) failures += 1;
+      }
+    }
+
+    expect(failures).toBe(0);
+  }, 30_000);
+
+  it('is continuous in the confidence level, with no jump where the tail gains an observation', () => {
+    // Worst loss 0.05, next 0.04. As the tail mass crosses 1, the ceil estimator jumped from 0.05
+    // to 0.045. The fractional estimator is Lipschitz in c with constant n |L_(k+1) - CVaR| / m,
+    // which is 0.1 here — and only above a tail mass of 1: below it the tail is the single worst
+    // loss and does not move. So the step of 1e-9 on that side moves it by 1e-10. It is not bounded
+    // by the step in general: on one loss of 1 among 999 zeros at c = 0.999 the constant is 1000.
+    const below = historicalCvar({ returns, confidenceLevel: 0.9 + 1e-9 });
+    const above = historicalCvar({ returns, confidenceLevel: 0.9 - 1e-9 });
+    expect(Math.abs(below - above)).toBeLessThan(1e-9);
   });
 
   it('matches the closed form for the parametric case', () => {

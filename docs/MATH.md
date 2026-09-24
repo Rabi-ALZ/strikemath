@@ -725,10 +725,49 @@ is the coherent measure of the two.
 CVaR_c = -mu + sigma phi(z_c) / (1 - c)
 ```
 
-The historical estimator averages the worst `ceil((1 - c) n)` losses. At 99% on 50 observations
-that is an average over a single point — defined, but an anecdote rather than an estimate.
+The historical estimator averages the worst `(1 - c) n` losses, where that tail mass need not be
+a whole number (Acerbi and Tasche, 2002). With the losses sorted worst first as `L_1 >= L_2 >= ...`,
+`m = (1 - c) n` and `k = floor(m)`,
 
-`CVaR >= VaR` always holds at the same confidence level.
+```
+CVaR_c = [ L_1 + ... + L_k + (m - k) L_(k+1) ] / m
+```
+
+When `m` is an integer this is the mean of the worst `m` losses. It is continuous in `c`, where an
+estimator rounding `m` to a whole count jumps each time the tail gains an observation. At 99% on 50
+observations `m` is one half, and the answer is the single worst loss — defined, but an anecdote
+rather than an estimate.
+
+The previous estimator, `ceil((1 - c) n)`, inherited the rounding of `1 - c` as a whole extra
+observation: `1 - 0.95` is 0.050000000000000044, so at `n = 20` it averaged the worst two losses
+rather than the worst one, and at 99% on 1000 observations the worst 11 rather than 10. Swept over
+every `n` up to 400 and every `k = (1 - c) n` below it, it took the wrong tail in 14 037 of 79 800
+cases.
+
+The fractional form alone would only have shrunk that excess, to a weight `(m - k)/m` on
+`L_(k+1)` of 8.9e-16 at `n = 20` and 8.5e-16 at `n = 1000` and 97.5% — and a small weight on a
+large gain still moves a result near zero by an unbounded relative amount: with the worst loss at 0 and nineteen gains of 1, `n = 20` at 95% gave -8.9e-16
+rather than 0. So `m` within `2 n eps` of a whole number is taken to be that number. That is how
+precisely `m` is known at all: `c` is a double within half an ulp of the decimal the caller wrote,
+`1 - c` and the product add at most another rounding each, and `n` magnifies all of it — the worst
+error measured is `0.75 n eps`. The cost is that the few doubles nearest a confidence level that
+makes the tail whole are treated as that level: at `n = 20`, 0.95 and the seven doubles around it. A
+confidence level written with six or fewer decimals is at least 1e-6 from a whole tail mass, and
+for `n` up to a million the bound is at most 4.4e-10, so no such input is snapped.
+
+The sum is taken in units of a power of two near the largest loss in the tail, then divided by `m`
+and scaled back. Dividing by a power of two is exact, every term is at most 2 in size, so no
+partial sum can overflow and a subnormal loss becomes an ordinary number rather than underflowing.
+The result is then held to the range of the losses it averages, which a weighted mean cannot leave
+in exact arithmetic but can by an ulp in floating point — and at the top of the double range that
+ulp is `Infinity`. Two simpler forms each failed: summing unscaled overflowed on three losses of
+`Number.MAX_VALUE`, and dividing each loss by `m` first underflowed two losses of 5e-324 to 0 and
+still overflowed on `n` losses of `Number.MAX_VALUE` for 456 of the sizes up to 1000. See DECISIONS, 2026-09-24.
+
+`CVaR >= VaR` holds at the same confidence level in exact arithmetic, for this estimator against
+the interpolated VaR of §8.2. In floating point it holds to within the rounding of a sum of up to
+`n` terms, which grows with the size of the tail. On a flat sample the range check makes CVaR
+exact, and it is VaR's interpolation that can land an ulp above the common value.
 
 ### 8.4 Kelly criterion
 
@@ -903,5 +942,7 @@ computed ordering between them can invert. Monotonicity is therefore asserted ag
 - Hart, J.F. et al. (1968), _Computer Approximations_, Wiley.
 - West, G. (2005), "Better approximations to cumulative normal functions", _Wilmott Magazine_.
 - Acklam, P.J. (2003), algorithm for the inverse normal cumulative distribution function.
+- Acerbi, C. and Tasche, D. (2002), "On the coherence of expected shortfall", _Journal of Banking
+  & Finance_ 26(7) — for the historical CVaR estimator with a fractional tail.
 - Cox, J., Ross, S. and Rubinstein, M. (1979), "Option pricing: a simplified approach",
   _Journal of Financial Economics_ — for the binomial tree, once implemented.

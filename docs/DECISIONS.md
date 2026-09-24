@@ -833,3 +833,119 @@ verifiability is not weight this project economises on.
 
 Both decisions point the same way, which is why they are recorded together: transparency over
 slimness, consistent with every other choice in this repository.
+
+---
+
+## 2026-09-24 — Historical CVaR weights a fractional tail; this replaces `ceil((1 - c) n)`
+
+`historicalCvar` averaged the worst `ceil((1 - c) n)` losses. It now averages the worst
+`(1 - c) n` losses with the one straddling the edge of the tail counted by the fraction that lies
+inside it — the estimator of Acerbi and Tasche (2002) — with two numerical safeguards described
+below. When `(1 - c) n` is an integer `k`, the result is the mean of the worst `k`.
+
+**The defect.** `1 - c` is not exact in binary. `1 - 0.95` is 0.050000000000000044, so at
+`n = 20` the product is 1.0000000000000009 and `ceil` returns 2. Measured by running the function,
+the old estimator averaged one loss too many at exactly the sizes people use:
+
+| `n`  | `c`   | Intended tail | Used |
+| ---- | ----- | ------------- | ---- |
+| 20   | 0.95  | 1             | 2    |
+| 100  | 0.99  | 1             | 2    |
+| 500  | 0.99  | 5             | 6    |
+| 1000 | 0.99  | 10            | 11   |
+| 1000 | 0.975 | 25            | 26   |
+
+Swept over every `n` from 2 to 400 and every `k` below it, with `c = 1 - k / n`: **14 037 of
+79 800 pairs took the wrong tail.** The existing test sat at `n = 10, c = 0.9`, where the product
+rounds _down_ to 0.9999999999999998 and `ceil` is right by luck — the convenient-point pattern this
+log has been recording since 29 July, once more.
+
+**Why the fractional estimator, rather than a tolerance on `ceil`.** `ceil(m - 1e-9)` would have
+fixed the table and left the estimator discontinuous: every time the tail gains an observation the
+result jumps, by up to half the gap between two losses. The fractional estimator is continuous in
+`c` and is the form under which expected shortfall is coherent on an empirical distribution, which
+is the property the module's own header gives as the reason to prefer CVaR over VaR.
+
+### The first two versions of this fix were wrong, and the verifier found both
+
+Written and tested, the fractional estimator was run past `quant-verifier` before commit, on the
+rule that fixes carry the blind spot of what they repair. Then the fix to its findings was run past
+it again, on the same rule. Every finding was reproduced independently before being acted on.
+
+**Round one** found three defects in the fix and four false claims in its documentation.
+
+1. **The fraction only shrank the excess.** `m = 1.0000000000000009` became a weight of 8.9e-16 on
+   `L_2` instead of a whole extra observation, and the first draft of this entry said that "cannot
+   move the result". It can: with the worst loss at 0 and nineteen gains of 1 the answer was
+   -8.9e-16 rather than 0, and with the worst at 1e-300 among gains of 1e300 it was -8.9e284. A
+   small weight on a large gain moves a result near zero by an unbounded relative amount.
+   **Fix:** `m` within `2 n eps` of a whole number is taken to be that number — how precisely `m`
+   is known at all, with the worst error measured at `0.75 n eps`.
+2. **Underflow at `m < 1`:** `fraction * loss / m` sent a loss of 1e-310 to 0 at `n = 1`.
+3. **Overflow**, pre-existing: summing the tail before dividing gave `-Infinity` on two gains of
+   1e308. The fix for 2 and 3 was to divide each loss by `m` before adding it, on the argument that
+   the weights sum to 1 and so every partial sum stays inside the range of the losses.
+
+**Round two** found that argument true only in exact arithmetic, and that the fix had traded one
+end of the range for the other.
+
+4. **Still overflowing.** In floating point the weights sum to a hair over 1: `n` losses of
+   `Number.MAX_VALUE` returned `Infinity` for 456 of the sizes from 1 to 1000, and three losses of
+   1.79e308 returned 1.7900000000000002e308, above every loss. The test used two losses of 1e308,
+   where no size overflows — a convenient point in the test written for this very fix.
+5. **A new underflow, a regression from the code being replaced:** dividing each loss by `m` sent
+   two losses of 5e-324 at `m = 2` to 0, where `ceil` had returned 5e-324 exactly. The test covered
+   only `m < 1`.
+   **Fix for 4 and 5:** the sum is taken in units of a power of two near the largest loss — exact
+   to divide by, every term at most 2, so nothing overflows and nothing subnormal underflows — and
+   the result is held to the range of the losses it averages, which it cannot leave in exact
+   arithmetic and can by an ulp in floating point.
+
+The false claims, across both rounds, corrected in the source, MATH §8.3 and the tests:
+
+- that `CVaR >= VaR` holds **always** — it holds in exact arithmetic, and in floating point to
+  within the rounding of a sum of up to `n` terms. Round one's correction said "a few ulps of the
+  largest loss", which round two measured at 2176 ulps on 10 000 flat losses, on that round's code;
+- that no distinguishable input is snapped — at `n = 20`, 0.95 and the seven doubles around it are
+  all read as 0.95. What does hold: a confidence level of six or fewer decimals is at least 1e-6
+  from a whole tail mass, against a bound of at most 4.4e-10 for `n` up to a million;
+- that the stray weight grows with `n` — the figure quoted was the excess `m - k`, not the weight
+  `(m - k)/m`, which is 8.5e-16 at `n = 1000`, smaller than at `n = 20`;
+- that the estimator moves by at most the step in `c` — its Lipschitz constant is
+  `n |L_(k+1) - CVaR| / m`, 1000 on one loss among 999 zeros;
+- that integral cases change "nothing beyond the last digit" — they change by a whole observation,
+  which was the point;
+- and two test comments: a continuity figure off by a factor of two, and a `-0` test that could
+  not fail, because its input turned `-0` back into `+0` before the exit guard was reached.
+
+**The tests that were meant to prove the fixes could not see the defects.** The sweep over every
+`(n, k)` uses evenly spaced losses, where a stray weight of 1e-15 moves the mean by less than the
+summation rounding: it passed with and without the snap, 21 eps either way. A second sweep puts
+the worst `k` losses at exactly 0 among gains, so any stray weight shows; without the snap it
+fails at exactly the 14 037 pairs `ceil` did. Round two then showed that rounding `m` to the
+nearest whole number outright — a snap threshold of 0.49 — survived the whole suite, because the
+only fractional test point was 1.5, where rounding ties. Tests at 1.3, and at genuine distances of
+1e-6 and 1e-12 from a whole number, now pin it.
+
+**Verified to have teeth**, each safeguard separately, in a battery of fifteen mutants: restoring
+`ceil` fails seven tests; removing the snap, the range check, the scaling or the `-0` guard each
+fails at least one; snap thresholds of 0.49, 1e-3 n, 1e-6, 1e-9 and `2 eps` all fail. Two of the
+fifteen survive and are harmless: a threshold of `n eps`, still above the measured error of
+`0.75 n eps`, and `floor` for the nearest whole number, which leaves a tail mass just below a
+whole number unsnapped — harmless because the leftover weight then falls on a loss inside the tail,
+not outside it. A threshold of 1e-13 also survives, tried separately: the suite pins the threshold
+between the measured error and the closest genuine distance it tests, 1e-12, and no tighter.
+Tests 184 -> 192, coverage 100% on all four metrics.
+
+**What changes for a caller.** Where `(1 - c) n` is meant as a whole number, the result is now the
+mean of that many losses, where `ceil` often took one more. Where it is not, the result is a
+weighted average between the two neighbouring counts — at `n = 10, c = 0.85` it moves from 0.045 to
+0.0467. At the ends of the double range, where the old estimator returned `Infinity`, it now
+returns the mean.
+
+**On when to stop.** The entry of 1 August predicted this: review converges on the newest layer,
+not on zero. Two rounds on a single function found five behavioural defects: three created by the
+fixes, one the fix claimed to close and did not, and one that predates this work. The stopping rule
+stated there still applies and is Rabi's to apply. For that judgement: round two's behavioural
+findings sit only at the extremes of the double range, and the rest of what it found was in the
+claims.
