@@ -2,6 +2,78 @@
 
 Updated at the end of each session, newest first.
 
+## 2026-09-24 — Stale copies restored, CI unproven, a defect in `historicalCvar` fixed
+
+One change to `/src`, in `historicalCvar`. Three things surfaced, and one of them was a
+behavioural defect.
+
+### Verification
+
+- `pnpm test` — **192 tests across 12 files**; `pnpm test:coverage` — 100% on all four metrics
+- `pnpm typecheck`, `pnpm lint`, `pnpm format:check` — clean, after the restore below
+- `git fsck --full` — clean. The reflog is linear from the initial commit, and no file has ever
+  been deleted from history
+
+### Three documents were overwritten by stale editor buffers, and restored
+
+On 3 September `CLAUDE.md`, `docs/DECISIONS.md` and `docs/MATH.md` were saved in the same second,
+uncommitted, carrying an `editor_options: markdown: wrap: 72` header — the signature of a visual
+Markdown editor, not of a session. Compared against every historical version, each matched a
+commit from 29–30 July: DECISIONS the initial commit, MATH `38540cd`. The saved MATH still quoted
+the superseded `2.4e-16`. So these were month-old buffers written over the current files, not
+edits: DECISIONS had fallen from 23 entries to 10, and the `CLAUDE.md` imports had collapsed onto
+one line, so the docs stopped loading.
+
+Nothing was ever committed, so history was never at risk. Restored from `HEAD` on 24 September.
+**Close the files in that editor without saving**, or it will write the same buffers again.
+
+### The work of 26 August, which this file never recorded
+
+Four commits: the Prettier violation in `test/blackScholes.test.ts` fixed; CI moved to Node 24
+and actions v7/v6, with `format:check` added to the workflow; publish and push denied in
+`.claude/settings.json`; and a debugging rule added to `quant-verifier.md`. Both items carried
+forward on 2 August — Node 20 in CI and the Prettier drift — are therefore closed in the source.
+
+**The CI change is not proven.** The push of `cdeb0ab` triggered run 32985780685, which failed
+after 15 minutes with "The job was not acquired by Runner of type hosted even after multiple
+attempts" — no step ran. Re-run on 24 September; it sat queued with no runner assigned. Actions is
+enabled on the repository; billing could not be inspected without the `user` token scope. Until a
+run goes green, the last verified CI result is 2 August.
+
+`3fd1ad3` is not pushed.
+
+### A new defect: `historicalCvar` counts one loss too many at common sample sizes
+
+The tail is `Math.ceil((1 - c) * n)`, and `1 - c` is not exact in binary. `1 - 0.95` is
+`0.050000000000000044`, so at `n = 20` the product is `1.0000000000000009` and `ceil` gives 2.
+Measured by running the function:
+
+| `n`  | `c`   | Intended tail | Used |
+| ---- | ----- | ------------- | ---- |
+| 20   | 0.95  | 1             | 2    |
+| 100  | 0.99  | 1             | 2    |
+| 500  | 0.99  | 5             | 6    |
+| 1000 | 0.99  | 10            | 11   |
+| 1000 | 0.975 | 25            | 26   |
+
+The existing test sits at `n = 10, c = 0.9`, where the product rounds _down_ to
+`0.9999999999999998` and `ceil` happens to be right — a convenient point again. **Fixed** by
+replacing the estimator with the fractional-tail form of Acerbi and Tasche.
+
+**The first two versions of the fix were themselves wrong.** `quant-verifier` ran twice before
+commit. Round one: the fraction only shrank the excess — a stray weight of 1e-15 on a large gain
+still moved a result near zero without bound — plus an underflow at `n = 1` and a pre-existing
+overflow. Round two: the fix for those still overflowed at `Number.MAX_VALUE` and underflowed
+subnormals at `m >= 2`, a regression. Both rounds also found false claims in the new documentation,
+and tests that could not see the defects they were written for. The final form snaps a tail mass
+within `2 n eps` of a whole number, sums in power-of-two units, and holds the result to the tail's
+range. Fifteen mutants tried: restoring `ceil` fails seven tests, every safeguard is pinned by at
+least one, and the two survivors are harmless. Tests 184 -> 192, coverage 100% on all four metrics.
+
+**Named risk.** Round two's behavioural findings were only at the extremes of the double range, but
+a third round was not run. The pattern since July is that each round finds defects in whatever the
+previous round wrote, and this one wrote the scaling and the range check.
+
 ## 2026-08-02 — Versioned, pushed to a private repo, CI green, publication still locked
 
 No change to `/src`. The session was about everything that surrounds the code: the headline
