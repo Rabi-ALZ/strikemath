@@ -13,11 +13,9 @@
       "Bash(pnpm publish:*)",
       "Bash(yarn publish)",
       "Bash(yarn publish:*)",
-      "Bash(npx npm publish:*)",
-
-      "Bash(git push)",
-      "Bash(git push:*)"
-    ]
+      "Bash(npx npm publish:*)"
+    ],
+    "ask": ["Bash(git push)", "Bash(git push:*)"]
   },
   "hooks": {
     "Stop": [

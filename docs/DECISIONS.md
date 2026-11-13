@@ -1075,3 +1075,30 @@ rewrite. Requested by Rabi.
 
 **A mirror backup of the pre-rewrite repository is kept outside it** and is not to be deleted
 until GitHub Support has confirmed the purge.
+
+---
+
+## 2026-11-14 — `git push` moves from deny to ask; publish stays denied
+
+`.claude/settings.json` denied `git push` outright since commit `1da64ac` (cited before the
+rewrite as `cdeb0ab`). It now **asks** instead. Every publish rule — `npm`, `pnpm`, `yarn` and
+`npx npm publish` — stays in `deny`, unchanged.
+
+**Why.** The deny existed to keep a session from damaging `main`. Since 13 November that guarantee
+is enforced by GitHub itself: ruleset `protect-main` (27231279) blocks deletion and non-fast-forward
+updates of `main`, with no bypass actors, and `current_user_can_bypass` reads `never`. A
+server-side rule holds for every client and every session. A tool-layer deny holds only for this
+one tool, so the lock now lives where it belongs, and an ask-prompt is enough for what is left: an
+ordinary fast-forward push, which Rabi approves each time.
+
+**What the ruleset does not cover, and the prompt therefore still has to.** Only `main` and tags
+matching `v*` are protected. Pushes to other branches, and of other tags, are not restricted
+server-side. Creating a `v*` tag is allowed, but under `protect-release-tags` (27231286) such a
+tag can be neither moved nor deleted once it is pushed. A wrong release tag is therefore
+permanent, and the prompt is the last point at which it can be caught.
+
+**Why publish stays denied.** Nothing server-side guards npm in the same way, and a version number
+cannot be reused once taken. The intended route is still a trusted-publishing workflow, never a
+command typed in a session (entry of 2026-11-13).
+
+**Takes effect from the next session.** This commit is pushed by Rabi.
