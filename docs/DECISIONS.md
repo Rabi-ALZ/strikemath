@@ -993,3 +993,85 @@ what happened, three months and eleven days after the library was first recorded
 `.claude/settings.json` denials on `npm publish` and `pnpm publish` stay in place: with the flag
 gone they are now the only mechanical guard, and the next release should go through a workflow
 rather than through either command typed by hand.
+
+---
+
+## 2026-11-13 — History rewritten: a personal email, `docs/ROADMAP.md` and a private project name removed
+
+Decided by Rabi, after a read-only security and privacy audit of everything the repository made
+public on the day it became public. The whole history was rewritten with `git filter-repo`,
+before any fork existed: `forks_count` was 0 when the decision was taken. It ran twice before
+anything was pushed, so the public repository only ever sees the result of both.
+
+**What was removed.**
+
+1. **A personal email address**, which stood in the author and committer fields of 17 of the 25
+   commits, 16 of them public. Every such field now carries the GitHub noreply address
+   `236479881+Rabi-ALZ@users.noreply.github.com`. Names, dates and messages are unchanged.
+   The commits authored as `strikemath <noreply@strikemath.dev>` were left as they were.
+2. **`docs/ROADMAP.md`**, from all 24 commits that contained it. It is planning rather than
+   documentation, and was already kept out of the npm tarball for that reason (entry of
+   2026-08-02), but the public repository carried it in full. The file is kept locally,
+   gitignored.
+3. **A private project name**, which `CLAUDE.md` gave as an example in its project-boundary rule in
+   all 25 original commits, 24 of them public. The phrase was removed from every version; the rule
+   reads the same without it. This was first fixed forward, when no rewrite was planned. Once the
+   rewrite was happening anyway, scrubbing it as well cost nothing, where a second rewrite after the
+   push would have cost everything above again. The commit that had fixed it forward now only
+   touches the publication section, and its message was corrected to match.
+
+**Why rewrite rather than fix forward.** A fix forward would have left all three in every public
+commit. With no forks and no releases, the rewrite would never be cheaper than on the day the
+repository became public.
+
+**Verified after the rewrite, before anything else was changed:**
+
+- 25 commits before and after, so no commit became empty.
+- Every old commit was compared with its rewritten counterpart. Each of the 24 public ones differs
+  **only** by the removal of `docs/ROADMAP.md` and the one-line change in `CLAUDE.md` (the first
+  commit, which predates ROADMAP, only by the latter), and author, dates and message are identical
+  apart from rewritten SHA references. The one unpushed commit differs in addition by the path and
+  wording fixes made to its agent files before it was ever pushed.
+- The personal address occurs 0 times in any identity field and 0 times in any object. The same
+  check run against the pre-rewrite backup finds 17 commits, so it can see what it looks for.
+- None of the three ROADMAP blobs exists in the rewritten repository.
+- The private project name occurs 0 times in any object or message. The same check against the
+  backup finds it in 3 blobs.
+- **`v0.1.0` matches the published tarball.** The six non-built files in `strikemath@0.1.0` are
+  byte-identical with the tag, all 22 `sourcesContent` entries in the source maps equal `src/`
+  at the tag, and `dist/` rebuilt from the tag is byte-identical with the tarball's `dist/`.
+- `pnpm typecheck`, `lint`, `format:check`, `test` (192 tests) and `build` are green.
+
+**State it plainly: the `gitHead` that npm records for `strikemath@0.1.0`, `e628be2`, no longer
+exists on `main`.** Its rewritten counterpart is `d0fcb45`, and `v0.1.0` points there. The
+tree differs from `e628be2` only by the absence of `docs/ROADMAP.md`, which the tarball never
+contained, and by the CLAUDE.md change above, which the tarball does not contain either. A
+reader following `gitHead` from the registry will find nothing at that SHA once
+GitHub has collected the old objects.
+
+**SHAs cited in this repository's documents are now stale**, because `filter-repo` rewrites
+SHA references in commit messages and not in file contents. This file is append-only,
+`docs/STATUS.md` is a dated session record, and both ship in the 0.1.0 tarball, so the old SHAs
+are left as written. The mapping:
+
+| Cited as | Now     | Where cited                 |
+| -------- | ------- | --------------------------- |
+| 38540cd  | cd49c77 | `docs/STATUS.md`            |
+| cdeb0ab  | 1da64ac | `docs/STATUS.md`            |
+| 3fd1ad3  | ac8b7f1 | `docs/STATUS.md`            |
+| e628be2  | d0fcb45 | npm `gitHead`, tag `v0.1.0` |
+| 2ce9df5  | af771b5 | the old `origin/main`       |
+
+**What a rewrite does not remove.** Existing clones keep the old history. GitHub keeps the old
+commits reachable by SHA until its own garbage collection, or until Support purges them. The
+metadata of old Actions runs carries the author address. Each of these is handled separately,
+and none of them is closed by this commit.
+
+**Tool installed for this, recorded per the installation-log rule:** 2026-11-13,
+`git-filter-repo` v2.47.0, the single script from the upstream release, sha256
+`67447413e273fc76809289111748870b6f6072f08b17efe94863a92d810b7d94`, identical in the raw file and
+in the release archive. Installed into the user's `~/bin`, not into the project. Purpose: this
+rewrite. Requested by Rabi.
+
+**A mirror backup of the pre-rewrite repository is kept outside it** and is not to be deleted
+until GitHub Support has confirmed the purge.
