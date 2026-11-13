@@ -2,6 +2,62 @@
 
 Updated at the end of each session, newest first.
 
+## 2026-11-13 (evening) — Security audit, history rewritten, repository settings hardened
+
+No change to `/src`. A read-only security and privacy audit of everything public — every commit,
+tag and object, the npm tarballs, CI, `.claude/` and the GitHub settings — found no secret and
+three high findings. Two are closed outright; the third, the personal email, is gone from the
+repository but stays reachable through the old SHAs until GitHub Support purges them. The
+findings themselves are kept locally under the gitignored `.claude/findings/`; the rewrite and its
+reasons are in DECISIONS under today's date.
+
+### What changed
+
+- **History rewritten before any fork existed.** A personal email was removed from all identity
+  fields, `docs/ROADMAP.md` from every commit, and a private project name from every version of
+  `CLAUDE.md`. `v0.1.0` now points at `d0fcb45`; npm's `gitHead` `e628be2` no longer exists on
+  `main`. Force-pushed by Rabi.
+- **CI:** `permissions: contents: read` and `persist-credentials: false`.
+- **`CLAUDE.md`:** the publication section matches the state since 0.1.0.
+- **`.claude/`:** user-test agents carry no local paths, and the audit agents are gitignored.
+- **GitHub:** secret scanning and push protection on, private vulnerability reporting on, the
+  seven workflow runs whose metadata carried the old address deleted, and two rulesets with no
+  bypass — `main` (no deletion, no force-push) and `refs/tags/v*` (no deletion, no update;
+  creation is allowed).
+
+### Verification
+
+- 0 occurrences of the personal address, the ROADMAP path or blobs, and the private project name,
+  in any identity field or object. The same checks find them in the pre-rewrite backup.
+- Each of the 24 public commits differs from its original only by the ROADMAP removal and the one
+  `CLAUDE.md` line.
+- `v0.1.0` against the published tarball: the six non-built files byte-identical, all 22
+  `sourcesContent` entries equal `src/`, and `dist/` rebuilt from the tag byte-identical.
+- CI run 43505794825 on `602e8d7` — green. Its log shows the token with `Contents: read` and
+  `Metadata: read` only, and the checkout with `persist-credentials: false`.
+- Every GitHub setting above read back with `GET` after it was set, including the effective rules
+  on `main` (`deletion`, `non_fast_forward`) and `current_user_can_bypass: never` on both
+  rulesets. The seven deleted runs return 404; the one remaining run carries the noreply address.
+- `pnpm typecheck`, `lint`, `format:check`, `test` (192 tests) and `build` — green.
+
+### Not done, or not yet provable
+
+- **GitHub Support has not been asked yet** to purge the old commits and cached views. Until it
+  is, the 24 old SHAs remain reachable by direct URL. The pre-rewrite mirror backup is kept, outside
+  the repository, until Support confirms.
+- **Tag creation under the ruleset is not measured.** Creation is not a restricted rule, so the
+  0.1.1 tag should be accepted; the first real proof is that tag.
+- **Secret scanning returned 0 open alerts** right after it was enabled. Whether GitHub's initial
+  scan of the history had finished at that moment is not known.
+- The global git email and GitHub's "block command line pushes that expose my email" are
+  deliberately left until another project has been checked. This repository sets its own email.
+
+### 0.1.1 backlog — unchanged, plus
+
+- The low and info findings from the audit that were not one-liners: tag-pinned actions, the
+  public `Stop` hook running `pnpm test`, `quant-verifier`'s `git checkout` instruction, the dead
+  `./examples` link in the tarball, and the 16 dev-dependency advisories (none in production).
+
 ## 2026-11-13 — Published: `strikemath@0.1.0` on npm, repository public, CI green
 
 No change to `/src`. The one change in the repository is the removal of `"private": true` from
