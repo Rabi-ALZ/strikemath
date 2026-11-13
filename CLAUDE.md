@@ -65,12 +65,12 @@ No runtime-configurable scaling, no units option object.
 Neither rule is stated here. Both live in `docs/DECISIONS.md`, and this section exists only so
 that the trigger is visible from the file that is always loaded.
 
-- **Publication is locked, and the lock is `"private": true` in `package.json`.** Removing it
-  requires an explicit decision from Rabi in the session — never as tidying up, never because it
-  looks like an oversight on a library meant to be published. The reasoning, and the fact that
-  `npm publish --dry-run` cannot demonstrate the guard, are in the DECISIONS entry of
-  2026-08-02. `npm publish` and `pnpm publish` are additionally denied in
-  `.claude/settings.json`; that is a speed bump, not the lock.
+- **Publication is no longer locked by `"private": true`.** The flag was removed by Rabi's explicit
+  decision on 2026-11-13 and `strikemath@0.1.0` is on npm; see the DECISIONS entry of that date,
+  which supersedes the one of 2026-08-02. Every further release still needs Rabi's explicit word
+  in the session. `npm publish` and `pnpm publish` remain denied in `.claude/settings.json`, and
+  that denial is now the only mechanical guard: the next release goes through a GitHub Actions
+  workflow with trusted publishing, never through a publish command typed by hand.
 - **`docs/DECISIONS.md` is append-only.** Entries are never edited and never deleted. A reversed
   decision gets a new entry that names what it supersedes and why. Stated at the top of
   DECISIONS.md itself; repeated here only as a pointer, because a rule against duplication is a
