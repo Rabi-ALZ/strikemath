@@ -949,3 +949,47 @@ fixes, one the fix claimed to close and did not, and one that predates this work
 stated there still applies and is Rabi's to apply. For that judgement: round two's behavioural
 findings sit only at the extremes of the double range, and the rest of what it found was in the
 claims.
+
+---
+
+## 2026-11-13 — Published as 0.1.0; this supersedes the `private: true` entry of 2026-08-02
+
+The lock recorded on 2 August was removed on 13 November 2026 by Rabi's explicit decision, in the
+session, and `strikemath@0.1.0` is on npm. The repository is public and tagged `v0.1.0`. The
+entry of 2 August said the only trigger for removal was that decision and nothing else; that is
+what happened, three months and eleven days after the library was first recorded as ready.
+
+**Verified against the registry, not against the publish command's exit code:**
+
+- `npm view strikemath version` → `0.1.0`; `dist-tags.latest` → `0.1.0`; one maintainer.
+- A fresh `npm install strikemath` in an empty directory, then Hull example 13.6 through both
+  entry points: ESM `import { bsCall }` and CJS `require('strikemath')` each return
+  4.759422392871535 — the value in the README and in `test/hull.bench.test.ts`.
+- The installed package holds the twelve files the allowlist names, 162 kB packed; `docs/` is
+  present, so the README's seven links into it resolve.
+- `gh repo view --json isPrivate` → `false`; `refs/tags/v0.1.0` is on the remote.
+
+**What was learned on the way, recorded so the next release does not rediscover it.**
+
+1. **`npm publish` succeeding is not proof of publication.** The publish was staged: npm first
+   created a placeholder version `0.0.0-stage` and held `0.1.0` until it was approved on
+   npmjs.com, about ninety seconds later. Between those two moments the CLI had reported success
+   and the registry served no `0.1.0`. The check that settles it is `npm view <pkg> version`, and
+   it is the same class of distinction this log has drawn before: the command describes an
+   intention, the registry describes what is.
+2. **The placeholder is public.** `0.0.0-stage` remains listed in `npm view strikemath versions`,
+   332 bytes unpacked and installable by explicit version. `latest` does not point at it, so no
+   ordinary install sees it. Whether to deprecate it is a decision for 0.1.1 and is on that
+   backlog in STATUS; deprecation is reversible, unpublish is not.
+3. **`npm publish --auth-type=web` from WSL needs `BROWSER=echo`.** Without it the CLI tries to
+   open a browser that does not exist inside WSL; with it the login URL is printed and opened by
+   hand on the Windows side.
+4. **Provenance was not generated**, as expected: the publish ran from a laptop, not from a
+   workflow, and the repository was still private when the tarball was built. Trusted publishing
+   from CI is the 0.1.1 route, and it will be the first release whose provenance a reader can
+   check.
+
+**What this entry does not change.** `docs/DECISIONS.md` stays append-only. The two
+`.claude/settings.json` denials on `npm publish` and `pnpm publish` stay in place: with the flag
+gone they are now the only mechanical guard, and the next release should go through a workflow
+rather than through either command typed by hand.

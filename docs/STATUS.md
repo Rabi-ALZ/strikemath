@@ -2,6 +2,46 @@
 
 Updated at the end of each session, newest first.
 
+## 2026-11-13 — Published: `strikemath@0.1.0` on npm, repository public, CI green
+
+No change to `/src`. The one change in the repository is the removal of `"private": true` from
+`package.json`, by Rabi's explicit decision on this date — the trigger the DECISIONS entry of
+2 August named as the only one. The entry superseding it, and what was learned during the
+publish, are in DECISIONS under today's date.
+
+### Verification
+
+- `npm view strikemath version` — **0.1.0**, `latest` → 0.1.0, one maintainer
+- Fresh `npm install strikemath` in an empty directory; Hull 13.6 via ESM and via CJS —
+  **4.759422392871535** on both, matching README and the Hull benchmark
+- Installed package: 12 files, 162 kB packed, `docs/` included
+- `gh repo view --json isPrivate` — **false**; tag `v0.1.0` on the remote
+- CI — green on Node 24 since run 37230653360 (4 October)
+- `pnpm test` — 192 tests across 12 files; coverage 100% on all four metrics (unchanged)
+
+### Known
+
+- `0.0.0-stage`, npm's staging placeholder, is listed as a version. `latest` does not point at
+  it. Deprecating it is on the 0.1.1 backlog, not done.
+- No provenance on 0.1.0: published from a laptop while the repository was private.
+
+### 0.1.1 backlog — recorded, not started
+
+- Remove `docs/STATUS.md` from `files`: it is a session log, not documentation of the library,
+  and it goes stale the moment it ships.
+- `CHANGELOG.md`, `SECURITY.md`.
+- Release through a GitHub Actions workflow with trusted publishing (OIDC), so 0.1.1 carries
+  provenance and no publish is typed by hand.
+- Decide whether to `npm deprecate strikemath@0.0.0-stage`.
+- `engines` is `>=18`; Node 18 and 20 are end-of-life and CI tests only 24.
+- `.claude/settings.json` still denies `npm publish` and `pnpm publish`. Keep until the workflow
+  exists; then it is the only path.
+
+### Named risk, carried forward
+
+Unchanged: the scaling and range check added to `historicalCvar` on 24 September were written by
+the second verifier round and have not been through a third. Now with users able to hit them.
+
 ## 2026-09-24 — Stale copies restored, CI unproven, a defect in `historicalCvar` fixed
 
 One change to `/src`, in `historicalCvar`. Three things surfaced, and one of them was a
